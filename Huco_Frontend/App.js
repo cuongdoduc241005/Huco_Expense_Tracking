@@ -15,6 +15,7 @@ import Home from "./src/screens/Home";
 import Recent from "./src/screens/Recent";
 import Stats from "./src/screens/Stats";
 import Profile from "./src/screens/Profile";
+import Scan from "./src/screens/Scan"; // <--- 1. IMPORT MÀN HÌNH SCAN
 
 // IMPORT MENU CỦA BẠN
 import NavigationBar from "./src/components/NavigationBar";
@@ -33,7 +34,8 @@ function MainTabs() {
 
         const handleTabPress = (tabName) => {
           if (tabName === "Scan") {
-            Alert.alert("Scan", "Mở tính năng quét QR...");
+            // <--- 2. SỬA LOGIC NÚT SCAN: Điều hướng thay vì Alert
+            navigation.navigate("Scan");
           } else {
             navigation.navigate(tabName);
           }
@@ -46,7 +48,7 @@ function MainTabs() {
     >
       <Tab.Screen name="Home" component={Home} />
       <Tab.Screen name="Recent" component={Recent} />
-      {/* Nút Scan không cần màn hình, logic đã xử lý ở tabBar trên */}
+      {/* Nút Scan ở giữa không cần khai báo Tab.Screen vì đã xử lý ở handleTabPress */}
       <Tab.Screen name="Stats" component={Stats} />
       <Tab.Screen name="Profile" component={Profile} />
     </Tab.Navigator>
@@ -79,8 +81,15 @@ export default function App() {
         <Stack.Screen name="Login" component={Login} />
         <Stack.Screen name="Register" component={Register} />
 
-        {/* QUAN TRỌNG: Chuyển hướng vào cụm Tab thay vì Home lẻ */}
+        {/* Cụm Tab chính (Home, Recent, Stats, Profile) */}
         <Stack.Screen name="MainTabs" component={MainTabs} />
+
+        {/* <--- 3. ĐĂNG KÝ MÀN HÌNH SCAN VÀO STACK --- */}
+        <Stack.Screen
+          name="Scan"
+          component={Scan}
+          options={{ animation: "none" }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );

@@ -2,7 +2,6 @@ import React from "react";
 import { Text, TouchableOpacity, StyleSheet } from "react-native";
 
 /**
- * Button Component chuẩn Figma
  * @param {string} title - Nội dung chữ
  * @param {string} variant - Tên biến thể: 'active' | 'small active' | 'small' | 'Default'
 

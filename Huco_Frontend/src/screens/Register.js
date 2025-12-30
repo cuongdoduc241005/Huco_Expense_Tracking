@@ -121,7 +121,7 @@ export default function Register({ navigation }) {
                 styles.input,
                 focusedInput === "fullName" && styles.inputFocused,
               ]}
-              placeholder="Họ và tên"
+              placeholder="Tên người dùng"
               placeholderTextColor="#626262"
               onFocus={() => setFocusedInput("fullName")}
               onBlur={() => setFocusedInput(null)}

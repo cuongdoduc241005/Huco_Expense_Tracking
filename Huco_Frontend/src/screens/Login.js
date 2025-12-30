@@ -10,6 +10,8 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Alert,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons, FontAwesome5 } from "@expo/vector-icons";
 
@@ -17,22 +19,71 @@ import { Ionicons, FontAwesome5 } from "@expo/vector-icons";
 import MyButton from "../components/Button";
 
 export default function Login({ navigation }) {
-  // State quản lý focus của Input để đổi màu viền
+  // State quản lý UI
   const [focusedInput, setFocusedInput] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   // State lưu giá trị nhập
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const handleLogin = () => {
-    navigation.navigate("MainTabs");
+  const handleLogin = async () => {
+    // 1. Kiểm tra nhập liệu trống
+    if (!email.trim() || !password.trim()) {
+      Alert.alert("Thông báo", "Vui lòng nhập đầy đủ Email và Mật khẩu!");
+      return;
+    }
+
+    setIsLoading(true); // Bật trạng thái loading
+
+    try {
+      // 2. Gọi API Login (Sử dụng IP máy tính đã cấu hình trong server.js)
+      const response = await fetch("http://192.168.100.145:3000/api/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: email.toLowerCase().trim(),
+          password: password,
+        }),
+      });
+
+      const data = await response.json();
+
+      // 3. Xử lý phản hồi từ Server dựa trên Status Code
+      if (response.status === 200) {
+        // Đăng nhập thành công
+        console.log("User Info:", data.user);
+
+        // Chuyển hướng vào Home và reset stack để không quay lại được màn Login
+        navigation.reset({
+          index: 0,
+          routes: [{ name: "MainTabs", params: { user: data.user } }],
+        });
+      } else {
+        // Sai tài khoản hoặc mật khẩu (401)
+        Alert.alert(
+          "Đăng nhập thất bại",
+          data.message || "Email hoặc mật khẩu không chính xác."
+        );
+      }
+    } catch (error) {
+      // Lỗi kết nối mạng hoặc Server không chạy
+      console.error("Login Error:", error);
+      Alert.alert(
+        "Lỗi kết nối",
+        "Không thể kết nối tới máy chủ. Vui lòng kiểm tra Wi-Fi hoặc đảm bảo Server đang chạy."
+      );
+    } finally {
+      setIsLoading(false); // Tắt trạng thái loading
+    }
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
-      {/* KeyboardAvoidingView giúp bàn phím không che mất Input khi nhập */}
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
@@ -57,7 +108,7 @@ export default function Login({ navigation }) {
             <TextInput
               style={[
                 styles.input,
-                focusedInput === "email" && styles.inputFocused, // Đổi viền khi focus
+                focusedInput === "email" && styles.inputFocused,
               ]}
               placeholder="Email"
               placeholderTextColor="#626262"
@@ -66,6 +117,7 @@ export default function Login({ navigation }) {
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
+              autoCapitalize="none"
             />
 
             {/* Input Password */}
@@ -80,7 +132,7 @@ export default function Login({ navigation }) {
               onBlur={() => setFocusedInput(null)}
               value={password}
               onChangeText={setPassword}
-              secureTextEntry // Che mật khẩu
+              secureTextEntry
             />
 
             {/* Quên mật khẩu */}
@@ -88,13 +140,17 @@ export default function Login({ navigation }) {
               <Text style={styles.forgotPassText}>Quên mật khẩu?</Text>
             </TouchableOpacity>
 
-            {/* Button Đăng nhập */}
+            {/* Button Đăng nhập hoặc Loading */}
             <View style={styles.loginButtonWrapper}>
-              <MyButton
-                title="Đăng nhập"
-                variant="active"
-                onPress={handleLogin}
-              />
+              {isLoading ? (
+                <ActivityIndicator size="large" color="#1F41BB" />
+              ) : (
+                <MyButton
+                  title="Đăng nhập"
+                  variant="active"
+                  onPress={handleLogin}
+                />
+              )}
             </View>
 
             {/* Tạo tài khoản mới */}
@@ -111,17 +167,12 @@ export default function Login({ navigation }) {
             <Text style={styles.socialText}>Hoặc tiếp tục với</Text>
 
             <View style={styles.socialRow}>
-              {/* Google */}
               <TouchableOpacity style={styles.socialIconBtn}>
                 <Ionicons name="logo-google" size={24} color="black" />
               </TouchableOpacity>
-
-              {/* Facebook */}
               <TouchableOpacity style={styles.socialIconBtn}>
                 <FontAwesome5 name="facebook-f" size={24} color="black" />
               </TouchableOpacity>
-
-              {/* Apple */}
               <TouchableOpacity style={styles.socialIconBtn}>
                 <Ionicons name="logo-apple" size={24} color="black" />
               </TouchableOpacity>

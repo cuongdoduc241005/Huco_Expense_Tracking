@@ -551,7 +551,11 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
   },
-  sectionTitle: { fontFamily: "Montserrat-Bold", fontSize: 16, color: "#333" },
+  sectionTitle: {
+    fontFamily: "Montserrat-Bold",
+    fontSize: 16,
+    color: "#1F41BB",
+  },
 
   unitSelector: {
     flexDirection: "row",
