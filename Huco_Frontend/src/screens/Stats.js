@@ -1,4 +1,9 @@
-import React, { useState, useMemo, useRef, useEffect } from "react";
+/**
+ * FILE: Stats.js
+ * VAI TRÒ: Màn hình Thống kê & Biểu đồ
+ */
+
+import React, { useRef, useEffect, useMemo } from "react";
 import {
   StyleSheet,
   Text,
@@ -9,20 +14,14 @@ import {
   ScrollView,
   Dimensions,
   TouchableWithoutFeedback,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons, FontAwesome5 } from "@expo/vector-icons";
-import Svg, {
-  G,
-  Path,
-  Circle,
-  Text as SvgText,
-  Rect,
-  Line,
-} from "react-native-svg";
+import Svg, { G, Path, Circle, Text as SvgText } from "react-native-svg";
 
+// --- IMPORT COMPONENT & VIEWMODEL ---
 import MainHeader from "../components/MainHeader";
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "../constants/Color_Icon";
-import { RAW_TRANSACTIONS } from "../constants/MockData";
+import { useStatsViewModel } from "../viewmodels/useStatsViewModel";
 
 const { width } = Dimensions.get("window");
 
@@ -41,56 +40,33 @@ const TIME_UNITS = [
   { id: "1m", label: "Tháng" },
 ];
 
-export default function Stats({ navigation }) {
-  const [transactionType, setTransactionType] = useState("EXPENSE");
-  const [selectedUnit, setSelectedUnit] = useState("1d");
-  const [selectedBarIndex, setSelectedBarIndex] = useState(null);
-  const [selectedSliceIndex, setSelectedSliceIndex] = useState(null);
+export default function Stats({ navigation, route }) {
+  const user = route.params?.user;
+
+  // 1. Kết nối ViewModel
+  const {
+    isLoading,
+    transactionType,
+    setTransactionType,
+    selectedUnit,
+    setSelectedUnit,
+    selectedBarIndex,
+    setSelectedBarIndex,
+    selectedSliceIndex,
+    setSelectedSliceIndex,
+    chartData,
+    pieData,
+    pieTotal,
+    refreshData,
+  } = useStatsViewModel(user);
 
   const chartScrollViewRef = useRef(null);
 
-  // --- 1. XỬ LÝ DỮ LIỆU BIỂU ĐỒ ---
-  const chartData = useMemo(() => {
-    setSelectedBarIndex(null);
-
-    // Lọc theo loại (Thu/Chi)
-    const filteredRaw = RAW_TRANSACTIONS.filter(
-      (t) => t.type === transactionType
-    );
-
-    // Sắp xếp thời gian
-    const sortedRaw = [...filteredRaw].sort(
-      (a, b) => new Date(a.date) - new Date(b.date)
-    );
-
-    // Nhóm dữ liệu
-    const grouped = {};
-    sortedRaw.forEach((item) => {
-      const date = new Date(item.date);
-      let key = "";
-      let label = "";
-      // Logic đơn giản hóa cho demo "Ngày"
-      key = `${date.getDate()}/${date.getMonth() + 1}`;
-      label = key;
-
-      if (!grouped[key]) {
-        grouped[key] = {
-          label: label,
-          day: date.getDate(), // Lưu ngày để check chia hết cho 5
-          value: 0,
-        };
-      }
-      grouped[key].value += item.amount;
-    });
-
-    return Object.values(grouped);
-  }, [transactionType]); // Chỉ chạy lại khi đổi loại Thu/Chi
-
-  // --- 2. TÍNH TOÁN CHIỀU RỘNG & ĐƯỜNG KẺ ---
-  // Tính chiều rộng thực tế để ép ScrollView phải cuộn
+  // 2. Tính toán SVG Path cho Line Chart (View Only Logic)
+  // Logic này thuần túy là vẽ hình nên để ở View cũng được
   const chartContentWidth = Math.max(
     width,
-    chartData.length * (BAR_WIDTH + BAR_GAP) + 60
+    chartData.length * (BAR_WIDTH + BAR_GAP) + 60,
   );
 
   const linePath = useMemo(() => {
@@ -101,59 +77,23 @@ export default function Stats({ navigation }) {
       .map((item, index) => {
         const x = index * (BAR_WIDTH + BAR_GAP) + BAR_WIDTH / 2;
         const barHeight = (item.value / maxVal) * (CHART_HEIGHT - 40);
-
-        // ĐẨY CAO ĐƯỜNG GẤP KHÚC:
-        const y = CHART_HEIGHT - barHeight - 30;
-
+        const y = CHART_HEIGHT - barHeight - 30; // Đẩy cao lên chút
         return `${index === 0 ? "M" : "L"} ${x} ${y}`;
       })
       .join(" ");
   }, [chartData]);
 
-  // Tự động cuộn tới cuối
+  // Tự động cuộn tới cuối khi có dữ liệu mới
   useEffect(() => {
-    if (chartScrollViewRef.current) {
+    if (chartScrollViewRef.current && chartData.length > 0) {
       setTimeout(
         () => chartScrollViewRef.current.scrollToEnd({ animated: true }),
-        100
+        100,
       );
     }
   }, [chartData]);
 
-  // --- Logic Pie Chart (Giữ nguyên) ---
-  const categoryStats = useMemo(() => {
-    const source =
-      transactionType === "EXPENSE" ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
-    const filteredRaw = RAW_TRANSACTIONS.filter(
-      (t) => t.type === transactionType
-    );
-    const catMap = {};
-    filteredRaw.forEach((t) => {
-      const randomCat = source[Math.floor(Math.random() * source.length)];
-      const catName = randomCat.name;
-      if (!catMap[catName]) catMap[catName] = { ...randomCat, amount: 0 };
-      catMap[catName].amount += t.amount;
-    });
-    let data = Object.values(catMap)
-      .sort((a, b) => b.amount - a.amount)
-      .slice(0, 5);
-    const total = data.reduce((sum, item) => sum + item.amount, 0);
-    let currentAngle = 0;
-    data = data.map((item) => {
-      const percent = total === 0 ? 0 : item.amount / total;
-      const angle = percent * 2 * Math.PI;
-      const itemData = {
-        ...item,
-        percent,
-        startAngle: currentAngle,
-        endAngle: currentAngle + angle,
-      };
-      currentAngle += angle;
-      return itemData;
-    });
-    return { data, total };
-  }, [transactionType]);
-
+  // 3. Helper vẽ Pie Slice
   const createPieSlice = (startAngle, endAngle, radius) => {
     const x1 = PIE_CENTER_X + radius * Math.cos(startAngle);
     const y1 = PIE_CENTER_Y + radius * Math.sin(startAngle);
@@ -162,8 +102,11 @@ export default function Stats({ navigation }) {
     const largeArc = endAngle - startAngle > Math.PI ? 1 : 0;
     return `M ${PIE_CENTER_X} ${PIE_CENTER_Y} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2} Z`;
   };
+
   const formatCurrency = (amount) =>
-    amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    Number(amount)
+      .toString()
+      .replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 
   // Màu sắc chủ đạo
   const THEME_COLOR = transactionType === "EXPENSE" ? "#F44336" : "#00C853";
@@ -171,13 +114,14 @@ export default function Stats({ navigation }) {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F9F9F9" />
-      <MainHeader />
+      <MainHeader user={user} />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 30 }}
+        // Thêm RefreshControl nếu cần
       >
-        {/* SWITCHER */}
+        {/* SWITCHER (Chi tiêu / Thu nhập) */}
         <View style={styles.switchWrapper}>
           <View style={styles.switchContainer}>
             <TouchableOpacity
@@ -215,296 +159,350 @@ export default function Stats({ navigation }) {
           </View>
         </View>
 
-        {/* --- BIỂU ĐỒ STOCK (CÓ KÉO NGANG) --- */}
-        <TouchableWithoutFeedback onPress={() => setSelectedBarIndex(null)}>
-          <View style={styles.cardContainer}>
-            <View style={styles.chartHeader}>
-              <Text style={styles.sectionTitle}>Biểu đồ xu hướng</Text>
-              <View style={styles.unitSelector}>
-                {TIME_UNITS.map((unit) => (
-                  <TouchableOpacity
-                    key={unit.id}
-                    style={[
-                      styles.unitBtn,
-                      selectedUnit === unit.id && styles.unitBtnActive,
-                    ]}
-                    onPress={() => setSelectedUnit(unit.id)}
+        {isLoading && chartData.length === 0 ? (
+          <ActivityIndicator
+            size="large"
+            color={THEME_COLOR}
+            style={{ marginTop: 50 }}
+          />
+        ) : (
+          <>
+            {/* --- BIỂU ĐỒ STOCK (CÓ KÉO NGANG) --- */}
+            <TouchableWithoutFeedback onPress={() => setSelectedBarIndex(null)}>
+              <View style={styles.cardContainer}>
+                <View style={styles.chartHeader}>
+                  <Text style={styles.sectionTitle}>Biểu đồ xu hướng</Text>
+                  <View style={styles.unitSelector}>
+                    {TIME_UNITS.map((unit) => (
+                      <TouchableOpacity
+                        key={unit.id}
+                        style={[
+                          styles.unitBtn,
+                          selectedUnit === unit.id && styles.unitBtnActive,
+                        ]}
+                        onPress={() => setSelectedUnit(unit.id)}
+                      >
+                        <Text
+                          style={[
+                            styles.unitText,
+                            selectedUnit === unit.id && {
+                              color: THEME_COLOR,
+                              fontWeight: "bold",
+                            },
+                          ]}
+                        >
+                          {unit.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {chartData.length === 0 ? (
+                  <View
+                    style={{
+                      height: 150,
+                      justifyContent: "center",
+                      alignItems: "center",
+                    }}
                   >
                     <Text
-                      style={[
-                        styles.unitText,
-                        selectedUnit === unit.id && {
-                          color: THEME_COLOR,
-                          fontWeight: "bold",
-                        },
-                      ]}
+                      style={{
+                        color: "#999",
+                        fontFamily: "Montserrat-Regular",
+                      }}
                     >
-                      {unit.label}
+                      Chưa có dữ liệu
                     </Text>
-                  </TouchableOpacity>
-                ))}
+                  </View>
+                ) : (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    ref={chartScrollViewRef}
+                    contentContainerStyle={{ paddingRight: 20 }}
+                  >
+                    <View
+                      style={{ height: CHART_HEIGHT, width: chartContentWidth }}
+                    >
+                      {/* LỚP 1: ĐƯỜNG KẺ (LINE CHART) */}
+                      <Svg
+                        height={CHART_HEIGHT}
+                        width={chartContentWidth}
+                        style={StyleSheet.absoluteFill}
+                      >
+                        <Path
+                          d={linePath}
+                          fill="none"
+                          stroke={THEME_COLOR}
+                          strokeWidth="2"
+                          strokeOpacity="0.8"
+                        />
+                      </Svg>
+
+                      {/* LỚP 2: CỘT (BAR CHART) */}
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "flex-end",
+                          height: CHART_HEIGHT,
+                          position: "absolute",
+                          bottom: 0,
+                          left: 0,
+                        }}
+                      >
+                        {chartData.map((item, idx) => {
+                          const maxVal =
+                            Math.max(...chartData.map((d) => d.value)) || 1;
+                          const height =
+                            (item.value / maxVal) * (CHART_HEIGHT - 40);
+                          const isSelected = selectedBarIndex === idx;
+                          const isAnySelected = selectedBarIndex !== null;
+                          const barColor =
+                            isSelected || !isAnySelected
+                              ? THEME_COLOR
+                              : "#E0E0E0";
+                          const barOpacity = isSelected
+                            ? 1
+                            : !isAnySelected
+                              ? 0.5
+                              : 0.3;
+                          const showLabel =
+                            item.day % 5 === 0 || chartData.length < 7; // Hiện nhiều label hơn nếu ít data
+
+                          return (
+                            <TouchableOpacity
+                              key={idx}
+                              style={{
+                                alignItems: "center",
+                                width: BAR_WIDTH,
+                                marginLeft: idx === 0 ? 0 : BAR_GAP,
+                              }}
+                              activeOpacity={0.8}
+                              onPress={() =>
+                                setSelectedBarIndex(isSelected ? null : idx)
+                              }
+                            >
+                              {/* Tooltip */}
+                              {isSelected && (
+                                <View
+                                  style={{
+                                    position: "absolute",
+                                    top: -height - 35,
+                                    backgroundColor: "#333",
+                                    padding: 3,
+                                    borderRadius: 4,
+                                    zIndex: 10,
+                                    minWidth: 50,
+                                  }}
+                                >
+                                  <Text
+                                    style={{
+                                      color: "#FFF",
+                                      fontSize: 10,
+                                      textAlign: "center",
+                                      fontWeight: "bold",
+                                    }}
+                                  >
+                                    {formatCurrency(item.value / 1000)}k
+                                  </Text>
+                                </View>
+                              )}
+
+                              <View
+                                style={{
+                                  width: BAR_WIDTH,
+                                  height: height || 2,
+                                  backgroundColor: barColor,
+                                  opacity: barOpacity,
+                                  borderRadius: 2,
+                                  marginBottom: 5,
+                                }}
+                              />
+
+                              {showLabel ? (
+                                <Text
+                                  style={{
+                                    fontSize: 9,
+                                    color: "#666",
+                                    textAlign: "center",
+                                    width: 40,
+                                    marginTop: 2,
+                                  }}
+                                >
+                                  {item.label}
+                                </Text>
+                              ) : (
+                                <View style={{ height: 13 }} />
+                              )}
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  </ScrollView>
+                )}
               </View>
-            </View>
+            </TouchableWithoutFeedback>
 
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              ref={chartScrollViewRef}
-              contentContainerStyle={{ paddingRight: 20 }}
-            >
-              {/* Set cứng width cho View bao ngoài SVG để đảm bảo scroll hoạt động */}
-              <View style={{ height: CHART_HEIGHT, width: chartContentWidth }}>
-                {/* LỚP 1: ĐƯỜNG KẺ (LINE CHART) */}
-                <Svg
-                  height={CHART_HEIGHT}
-                  width={chartContentWidth}
-                  style={StyleSheet.absoluteFill}
-                >
-                  <Path
-                    d={linePath}
-                    fill="none"
-                    stroke={THEME_COLOR}
-                    strokeWidth="2"
-                    strokeOpacity="0.8"
-                  />
-                </Svg>
+            {/* --- PIE CHART SECTION --- */}
+            <View style={styles.cardContainer}>
+              <Text style={styles.sectionTitle}>Phân tích danh mục</Text>
 
-                {/* LỚP 2: CỘT (BAR CHART) */}
+              {pieData.length === 0 ? (
                 <View
                   style={{
-                    flexDirection: "row",
-                    alignItems: "flex-end",
-                    height: CHART_HEIGHT,
-                    position: "absolute",
-                    bottom: 0,
-                    left: 0,
+                    height: 100,
+                    justifyContent: "center",
+                    alignItems: "center",
                   }}
                 >
-                  {chartData.map((item, idx) => {
-                    const maxVal =
-                      Math.max(...chartData.map((d) => d.value)) || 1;
-                    // Tính height cột
-                    const height = (item.value / maxVal) * (CHART_HEIGHT - 40);
+                  <Text
+                    style={{ color: "#999", fontFamily: "Montserrat-Regular" }}
+                  >
+                    Chưa có dữ liệu phân tích
+                  </Text>
+                </View>
+              ) : (
+                <>
+                  <View style={styles.pieContainer}>
+                    <Svg width={width} height={PIE_RADIUS * 2 + 40}>
+                      <G>
+                        {pieData.map((slice, index) => {
+                          const isSelected = selectedSliceIndex === index;
+                          const radius = isSelected
+                            ? PIE_RADIUS + 10
+                            : PIE_RADIUS;
+                          return (
+                            <Path
+                              key={index}
+                              d={createPieSlice(
+                                slice.startAngle,
+                                slice.endAngle,
+                                radius,
+                              )}
+                              fill={slice.color}
+                              stroke="#FFF"
+                              strokeWidth={2}
+                              onPress={() =>
+                                setSelectedSliceIndex(
+                                  index === selectedSliceIndex ? null : index,
+                                )
+                              }
+                            />
+                          );
+                        })}
+                        <Circle
+                          cx={PIE_CENTER_X}
+                          cy={PIE_CENTER_Y}
+                          r={PIE_RADIUS * 0.6}
+                          fill="#FFF"
+                        />
+                        <SvgText
+                          x={PIE_CENTER_X}
+                          y={PIE_CENTER_Y - 5}
+                          fill="#666"
+                          fontSize="14"
+                          fontFamily="Montserrat-Regular"
+                          textAnchor="middle"
+                        >
+                          {selectedSliceIndex !== null
+                            ? "Chi tiết"
+                            : "Tổng cộng"}
+                        </SvgText>
+                        <SvgText
+                          x={PIE_CENTER_X}
+                          y={PIE_CENTER_Y + 20}
+                          fill="#333"
+                          fontSize="18"
+                          fontFamily="Montserrat-Bold"
+                          textAnchor="middle"
+                        >
+                          {selectedSliceIndex !== null
+                            ? formatCurrency(pieData[selectedSliceIndex].amount)
+                            : formatCurrency(pieTotal)}
+                        </SvgText>
+                      </G>
+                    </Svg>
+                  </View>
 
-                    const isSelected = selectedBarIndex === idx;
-                    const isAnySelected = selectedBarIndex !== null;
-                    const barColor =
-                      isSelected || !isAnySelected ? THEME_COLOR : "#E0E0E0";
-                    const barOpacity = isSelected
-                      ? 1
-                      : !isAnySelected
-                      ? 0.5
-                      : 0.3;
-
-                    // --- LOGIC HIỂN THỊ NGÀY (Chia hết cho 5) ---
-                    const showLabel = item.day % 5 === 0;
-
-                    return (
-                      <TouchableOpacity
-                        key={idx}
-                        style={{
-                          alignItems: "center",
-                          width: BAR_WIDTH,
-                          marginLeft: idx === 0 ? 0 : BAR_GAP,
-                        }}
-                        activeOpacity={0.8}
-                        onPress={() =>
-                          setSelectedBarIndex(isSelected ? null : idx)
-                        }
-                      >
-                        {/* Tooltip */}
-                        {isSelected && (
+                  <View style={styles.listContainer}>
+                    {pieData.map((item, index) => {
+                      const isSelected = selectedSliceIndex === index;
+                      return (
+                        <TouchableOpacity
+                          key={item.id}
+                          style={[
+                            styles.rankItem,
+                            isSelected && styles.rankItemActive,
+                          ]}
+                          onPress={() =>
+                            setSelectedSliceIndex(
+                              index === selectedSliceIndex ? null : index,
+                            )
+                          }
+                        >
                           <View
-                            style={{
-                              position: "absolute",
-                              top: -height - 35,
-                              backgroundColor: "#333",
-                              padding: 3,
-                              borderRadius: 4,
-                              zIndex: 10,
-                              minWidth: 50,
-                            }}
+                            style={[
+                              styles.rankIconBox,
+                              { backgroundColor: item.color + "20" },
+                            ]}
                           >
-                            <Text
-                              style={{
-                                color: "#FFF",
-                                fontSize: 10,
-                                textAlign: "center",
-                                fontWeight: "bold",
-                              }}
-                            >
-                              {formatCurrency(item.value / 1000)}k
+                            <FontAwesome5
+                              name={item.icon}
+                              size={16}
+                              color={item.color}
+                            />
+                          </View>
+                          <View style={styles.rankContent}>
+                            <View style={styles.rankRow}>
+                              <Text
+                                style={[
+                                  styles.rankName,
+                                  isSelected && { color: "#1F41BB" },
+                                ]}
+                              >
+                                {item.name}
+                              </Text>
+                              <Text
+                                style={[
+                                  styles.rankAmount,
+                                  isSelected && { color: "#1F41BB" },
+                                ]}
+                              >
+                                {formatCurrency(item.amount)} ₫
+                              </Text>
+                            </View>
+                            <View style={styles.progressBarBg}>
+                              <View
+                                style={[
+                                  styles.progressBarFill,
+                                  {
+                                    width: `${item.percent * 100}%`,
+                                    backgroundColor: item.color,
+                                  },
+                                ]}
+                              />
+                            </View>
+                            <Text style={styles.percentText}>
+                              {Math.round(item.percent * 100)}%
                             </Text>
                           </View>
-                        )}
-
-                        <View
-                          style={{
-                            width: BAR_WIDTH,
-                            height: height || 2,
-                            backgroundColor: barColor,
-                            opacity: barOpacity,
-                            borderRadius: 2,
-                            marginBottom: 5,
-                          }}
-                        />
-
-                        {/* Chỉ hiện Label nếu ngày chia hết cho 5 */}
-                        {showLabel ? (
-                          <Text
-                            style={{
-                              fontSize: 9,
-                              color: "#666",
-                              textAlign: "center",
-                              width: 40,
-                              marginTop: 2,
-                            }}
-                          >
-                            {item.label}
-                          </Text>
-                        ) : (
-                          <View style={{ height: 13 }} /> // Placeholder để trục không bị lệch
-                        )}
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              </View>
-            </ScrollView>
-          </View>
-        </TouchableWithoutFeedback>
-
-        {/* PIE CHART SECTION */}
-        <View style={styles.cardContainer}>
-          <Text style={styles.sectionTitle}>Phân tích danh mục</Text>
-          <View style={styles.pieContainer}>
-            <Svg width={width} height={PIE_RADIUS * 2 + 40}>
-              <G>
-                {categoryStats.data.map((slice, index) => {
-                  const isSelected = selectedSliceIndex === index;
-                  const radius = isSelected ? PIE_RADIUS + 10 : PIE_RADIUS;
-                  return (
-                    <Path
-                      key={index}
-                      d={createPieSlice(
-                        slice.startAngle,
-                        slice.endAngle,
-                        radius
-                      )}
-                      fill={slice.color}
-                      stroke="#FFF"
-                      strokeWidth={2}
-                      onPress={() =>
-                        setSelectedSliceIndex(
-                          index === selectedSliceIndex ? null : index
-                        )
-                      }
-                    />
-                  );
-                })}
-                <Circle
-                  cx={PIE_CENTER_X}
-                  cy={PIE_CENTER_Y}
-                  r={PIE_RADIUS * 0.6}
-                  fill="#FFF"
-                />
-                <SvgText
-                  x={PIE_CENTER_X}
-                  y={PIE_CENTER_Y - 5}
-                  fill="#666"
-                  fontSize="14"
-                  fontFamily="Montserrat-Regular"
-                  textAnchor="middle"
-                >
-                  {selectedSliceIndex !== null ? "Chi tiết" : "Tổng cộng"}
-                </SvgText>
-                <SvgText
-                  x={PIE_CENTER_X}
-                  y={PIE_CENTER_Y + 20}
-                  fill="#333"
-                  fontSize="18"
-                  fontFamily="Montserrat-Bold"
-                  textAnchor="middle"
-                >
-                  {selectedSliceIndex !== null
-                    ? formatCurrency(
-                        categoryStats.data[selectedSliceIndex].amount
-                      )
-                    : formatCurrency(categoryStats.total)}
-                </SvgText>
-              </G>
-            </Svg>
-          </View>
-
-          <View style={styles.listContainer}>
-            {categoryStats.data.map((item, index) => {
-              const isSelected = selectedSliceIndex === index;
-              return (
-                <TouchableOpacity
-                  key={item.id}
-                  style={[styles.rankItem, isSelected && styles.rankItemActive]}
-                  onPress={() =>
-                    setSelectedSliceIndex(
-                      index === selectedSliceIndex ? null : index
-                    )
-                  }
-                >
-                  <View
-                    style={[
-                      styles.rankIconBox,
-                      { backgroundColor: item.color + "20" },
-                    ]}
-                  >
-                    <FontAwesome5
-                      name={item.icon}
-                      size={16}
-                      color={item.color}
-                    />
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
-                  <View style={styles.rankContent}>
-                    <View style={styles.rankRow}>
-                      <Text
-                        style={[
-                          styles.rankName,
-                          isSelected && { color: "#1F41BB" },
-                        ]}
-                      >
-                        {item.name}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.rankAmount,
-                          isSelected && { color: "#1F41BB" },
-                        ]}
-                      >
-                        {formatCurrency(item.amount)} ₫
-                      </Text>
-                    </View>
-                    <View style={styles.progressBarBg}>
-                      <View
-                        style={[
-                          styles.progressBarFill,
-                          {
-                            width: `${item.percent * 100}%`,
-                            backgroundColor: item.color,
-                          },
-                        ]}
-                      />
-                    </View>
-                    <Text style={styles.percentText}>
-                      {Math.round(item.percent * 100)}%
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
+                </>
+              )}
+            </View>
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
+// Giữ nguyên Styles cũ
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F9F9F9" },
   topSection: { paddingHorizontal: 20, paddingTop: 10, marginBottom: 15 },

@@ -1,4 +1,10 @@
-import React, { useState, useMemo } from "react";
+/**
+ * FILE: Recent.js
+ * VAI TRÒ: Màn hình chi tiết lịch sử giao dịch
+ * ĐẶC ĐIỂM: Sử dụng SectionList để gom nhóm giao dịch theo ngày.
+ */
+
+import React, { useState } from "react";
 import {
   StyleSheet,
   Text,
@@ -8,11 +14,9 @@ import {
   TouchableOpacity,
   SectionList,
   Modal,
-  TextInput,
   Alert,
   ScrollView,
-  KeyboardAvoidingView,
-  Platform,
+  ActivityIndicator,
 } from "react-native";
 import {
   Ionicons,
@@ -20,93 +24,38 @@ import {
   MaterialCommunityIcons,
 } from "@expo/vector-icons";
 
-// --- IMPORT COMPONENT & DATA ---
+// --- IMPORT COMPONENT & VIEWMODEL ---
 import MainHeader from "../components/MainHeader";
-// Import danh mục và dữ liệu thô từ mockData.js
-import {
-  EXPENSE_CATEGORIES,
-  INCOME_CATEGORIES,
-  RAW_TRANSACTIONS,
-} from "../constants/MockData";
+import { useRecentViewModel } from "../viewmodels/useRecentViewModel";
 
 const FILTERS = ["Tất cả", "Chi tiêu", "Thu nhập", "Tháng này", "Tháng trước"];
 
-export default function Recent({ navigation }) {
-  const [showBalance, setShowBalance] = useState(true);
-  const [activeFilter, setActiveFilter] = useState("Tất cả");
+export default function Recent({ navigation, route }) {
+  // 1. Nhận user từ params (được truyền từ Home)
+  const user = route.params?.user;
 
+  // 2. Gọi ViewModel để lấy logic và dữ liệu
+  const {
+    isLoading,
+    activeFilter,
+    setActiveFilter,
+    stats,
+    groupedTransactions,
+    refreshData,
+  } = useRecentViewModel(user);
+
+  // --- UI STATE (Chỉ quản lý hiển thị cục bộ) ---
+  const [showBalance, setShowBalance] = useState(true);
   const [selectedItem, setSelectedItem] = useState(null);
   const [menuVisible, setMenuVisible] = useState(false);
 
-  // --- LOGIC XỬ LÝ DỮ LIỆU ---
-  const processData = (rawData) => {
-    const grouped = {};
-    rawData.forEach((item) => {
-      const dateObj = new Date(item.date);
-      const title = `${String(dateObj.getDate()).padStart(2, "0")}/${String(
-        dateObj.getMonth() + 1
-      ).padStart(2, "0")}/${dateObj.getFullYear()}`;
-
-      const source =
-        item.type === "INCOME" ? INCOME_CATEGORIES : EXPENSE_CATEGORIES;
-      // Ép kiểu String để so sánh ID chính xác
-      const catInfo = source.find(
-        (c) => String(c.id) === String(item.categoryId)
-      ) || { name: "Khác", icon: "question", color: "#999" };
-
-      const formattedItem = {
-        ...item,
-        category: catInfo.name,
-        icon: catInfo.icon,
-        color: catInfo.color,
-        time: `${String(dateObj.getHours()).padStart(2, "0")}:${String(
-          dateObj.getMinutes()
-        ).padStart(2, "0")}`,
-      };
-
-      if (!grouped[title]) grouped[title] = [];
-      grouped[title].push(formattedItem);
-    });
-
-    return Object.keys(grouped)
-      .map((date) => ({ title: date, data: grouped[date] }))
-      .sort((a, b) => {
-        const dateA = a.title.split("/").reverse().join("-");
-        const dateB = b.title.split("/").reverse().join("-");
-        return new Date(dateB) - new Date(dateA);
-      });
-  };
-
-  const filteredSections = useMemo(() => {
-    let data = RAW_TRANSACTIONS;
-    if (activeFilter === "Chi tiêu")
-      data = data.filter((t) => t.type === "EXPENSE");
-    if (activeFilter === "Thu nhập")
-      data = data.filter((t) => t.type === "INCOME");
-
-    // Logic lọc theo tháng thực tế (Dữ liệu mẫu 2024)
-    if (activeFilter === "Tháng này")
-      data = data.filter((t) => new Date(t.date).getMonth() === 11);
-    if (activeFilter === "Tháng trước")
-      data = data.filter((t) => new Date(t.date).getMonth() === 10);
-
-    return processData(data);
-  }, [activeFilter]);
-
-  const stats = useMemo(() => {
-    return RAW_TRANSACTIONS.reduce(
-      (acc, curr) => {
-        if (curr.type === "INCOME") acc.income += curr.amount;
-        else acc.expense += curr.amount;
-        return acc;
-      },
-      { income: 0, expense: 0 }
-    );
-  }, []);
-
+  // --- HELPER FUNCTION ---
   const formatCurrency = (amount) =>
-    amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+    Number(amount)
+      .toString()
+      .replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 
+  // --- RENDER ITEM ---
   const renderItem = ({ item }) => (
     <TouchableOpacity
       style={styles.transactionItem}
@@ -133,7 +82,7 @@ export default function Recent({ navigation }) {
         </View>
         <View style={styles.bottomRow}>
           <Text style={styles.noteText} numberOfLines={1}>
-            {item.note}
+            {item.note || "Không có ghi chú"}
           </Text>
           <Text style={styles.timeText}>{item.time}</Text>
         </View>
@@ -144,10 +93,11 @@ export default function Recent({ navigation }) {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F9F9F9" />
-      <MainHeader />
+      <MainHeader user={user} />
 
-      {/* PHẦN CỐ ĐỊNH (FIXED HEADER) */}
+      {/* --- PHẦN CỐ ĐỊNH (FIXED HEADER) --- */}
       <View style={styles.fixedHeader}>
+        {/* CARD TỔNG QUAN (BALANCE) */}
         <View style={styles.balanceCard}>
           <View style={styles.balanceHeader}>
             <Text style={styles.balanceLabel}>Tổng số dư</Text>
@@ -165,6 +115,7 @@ export default function Recent({ navigation }) {
               : "******"}
           </Text>
           <View style={styles.balanceRow}>
+            {/* Tổng Thu */}
             <View style={styles.balanceItem}>
               <View style={styles.arrowIconDown}>
                 <Ionicons name="arrow-down" size={16} color="#FFF" />
@@ -176,6 +127,8 @@ export default function Recent({ navigation }) {
                 </Text>
               </View>
             </View>
+
+            {/* Tổng Chi */}
             <View style={styles.balanceItem}>
               <View style={styles.arrowIconUp}>
                 <Ionicons name="arrow-up" size={16} color="#FFF" />
@@ -192,6 +145,7 @@ export default function Recent({ navigation }) {
           </View>
         </View>
 
+        {/* THANH BỘ LỌC (FILTERS) */}
         <View style={styles.filterContainer}>
           <ScrollView
             horizontal
@@ -221,26 +175,43 @@ export default function Recent({ navigation }) {
         </View>
       </View>
 
-      {/* PHẦN CUỘN (SCROLLABLE LIST) */}
+      {/* --- DANH SÁCH GIAO DỊCH (SECTION LIST) --- */}
       <View style={{ flex: 1 }}>
-        <SectionList
-          sections={filteredSections}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          renderSectionHeader={({ section: { title } }) => (
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionHeaderText}>{title}</Text>
-            </View>
-          )}
-          contentContainerStyle={{ paddingBottom: 0 }} // Sửa thành 0 để dừng sát mục cuối
-          showsVerticalScrollIndicator={true}
-          bounces={false} // Ngăn chặn hiệu ứng nảy trên iOS
-          overScrollMode="never" // Ngăn chặn hiệu ứng cuộn quá đà trên Android
-          stickySectionHeadersEnabled={true}
-        />
+        {isLoading ? (
+          <ActivityIndicator
+            size="large"
+            color="#1F41BB"
+            style={{ marginTop: 50 }}
+          />
+        ) : (
+          <SectionList
+            sections={groupedTransactions}
+            keyExtractor={(item) => item.id.toString()}
+            renderItem={renderItem}
+            renderSectionHeader={({ section: { title } }) => (
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionHeaderText}>{title}</Text>
+              </View>
+            )}
+            contentContainerStyle={{ paddingBottom: 20 }}
+            showsVerticalScrollIndicator={true}
+            stickySectionHeadersEnabled={true}
+            onRefresh={refreshData}
+            refreshing={isLoading}
+            ListEmptyComponent={
+              <View style={{ alignItems: "center", marginTop: 50 }}>
+                <Text
+                  style={{ color: "#999", fontFamily: "Montserrat-Regular" }}
+                >
+                  Không có dữ liệu
+                </Text>
+              </View>
+            }
+          />
+        )}
       </View>
 
-      {/* MODAL TÙY CHỌN (MENU) */}
+      {/* --- MODAL TÙY CHỌN (MENU) --- */}
       <Modal
         animationType="fade"
         transparent={true}
@@ -254,17 +225,39 @@ export default function Recent({ navigation }) {
         >
           <View style={styles.menuBox}>
             <Text style={styles.menuTitle}>Tùy chọn</Text>
+
+            {/* Nút Sửa */}
             <TouchableOpacity
               style={styles.menuOption}
-              onPress={() => setMenuVisible(false)}
+              onPress={() => {
+                setMenuVisible(false);
+                Alert.alert("Thông báo", "Tính năng 'Sửa' đang phát triển");
+              }}
             >
               <MaterialCommunityIcons name="pencil" size={24} color="#1F41BB" />
               <Text style={styles.menuOptionText}>Sửa</Text>
             </TouchableOpacity>
+
             <View style={styles.menuDivider} />
+
+            {/* Nút Xóa */}
             <TouchableOpacity
               style={styles.menuOption}
-              onPress={() => setMenuVisible(false)}
+              onPress={() => {
+                setMenuVisible(false);
+                Alert.alert(
+                  "Xác nhận xóa",
+                  "Bạn có chắc muốn xóa giao dịch này?",
+                  [
+                    { text: "Hủy", style: "cancel" },
+                    {
+                      text: "Xóa",
+                      style: "destructive",
+                      onPress: () => console.log("Delete", selectedItem?.id),
+                    },
+                  ],
+                );
+              }}
             >
               <MaterialCommunityIcons
                 name="trash-can-outline"
@@ -282,12 +275,13 @@ export default function Recent({ navigation }) {
   );
 }
 
+// Giữ nguyên Styles cũ của bạn
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F9F9F9" },
   fixedHeader: {
     backgroundColor: "#F9F9F9",
     paddingTop: 10,
-    zIndex: 10, // Đảm bảo header nằm trên list khi cuộn
+    zIndex: 10,
   },
   balanceCard: {
     backgroundColor: "#1F41BB",

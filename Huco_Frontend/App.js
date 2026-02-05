@@ -15,9 +15,9 @@ import Home from "./src/screens/Home";
 import Recent from "./src/screens/Recent";
 import Stats from "./src/screens/Stats";
 import Profile from "./src/screens/Profile";
-import Scan from "./src/screens/Scan"; // <--- 1. IMPORT MÀN HÌNH SCAN
+import Scan from "./src/screens/Scan";
 
-// IMPORT MENU CỦA BẠN
+// IMPORT MENU
 import NavigationBar from "./src/components/NavigationBar";
 
 const Stack = createNativeStackNavigator();

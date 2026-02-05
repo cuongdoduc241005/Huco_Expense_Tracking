@@ -18,7 +18,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    // SỬA LẠI PADDING: Bỏ paddingTop cứng, dùng paddingVertical để cân đối
     paddingHorizontal: 25,
     paddingVertical: 15,
     backgroundColor: "#F9F9F9", // Đặt màu nền trùng background app để khi lướt không bị lộ

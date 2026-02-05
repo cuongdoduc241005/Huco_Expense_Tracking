@@ -1,4 +1,4 @@
-import React, { useState, useLayoutEffect } from "react";
+import React from "react";
 import {
   StyleSheet,
   Text,
@@ -10,9 +10,9 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Alert,
   Modal,
   FlatList,
+  ActivityIndicator,
 } from "react-native";
 import {
   Ionicons,
@@ -21,124 +21,55 @@ import {
 } from "@expo/vector-icons";
 import DateTimePicker from "@react-native-community/datetimepicker";
 
-// --- IMPORT COMPONENT & DATA ---
+// Components
 import MainHeader from "../components/MainHeader";
-
-// 1. Lấy Tài nguyên tĩnh (Màu, Icon) từ data.js
-import { MATERIAL_COLORS, AVAILABLE_ICONS } from "../constants/Color_Icon";
-
-// 2. Lấy Dữ liệu giả lập (Danh mục) từ mockData.js
-import { EXPENSE_CATEGORIES, INCOME_CATEGORIES } from "../constants/MockData";
+import CustomAlert from "../components/CustomAlert";
+import { useHomeViewModel } from "../viewmodels/useHomeViewModel";
+import { AVAILABLE_ICONS, MATERIAL_COLORS } from "../constants/Color_Icon";
 
 export default function Home({ navigation }) {
-  // Chặn vuốt Back trên iOS (nếu cần)
-  useLayoutEffect(() => {
-    navigation.setOptions({ gestureEnabled: false, headerLeft: () => null });
-  }, [navigation]);
-
-  // --- STATE ---
-  // Khởi tạo danh mục từ file Mock Data
-  const [expenseCategories, setExpenseCategories] =
-    useState(EXPENSE_CATEGORIES);
-  const [incomeCategories, setIncomeCategories] = useState(INCOME_CATEGORIES);
-
-  const [showAddCatModal, setShowAddCatModal] = useState(false);
-  const [newCatName, setNewCatName] = useState("");
-  const [newCatIcon, setNewCatIcon] = useState("star");
-
-  const [transactionType, setTransactionType] = useState("EXPENSE");
-  const [amount, setAmount] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState(null);
-  const [note, setNote] = useState("");
-  const [date, setDate] = useState(new Date());
-  const [showDatePicker, setShowDatePicker] = useState(false);
-
-  // --- LOGIC ---
-  const formatCurrency = (value) => {
-    const number = value.replace(/\D/g, "");
-    return number.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-  };
-  const handleAmountChange = (text) => setAmount(formatCurrency(text));
-
-  const onChangeDate = (event, selectedDate) => {
-    if (Platform.OS === "android") setShowDatePicker(false);
-    if (selectedDate) setDate(selectedDate);
-  };
-  const changeDateBy = (days) => {
-    const newDate = new Date(date);
-    newDate.setDate(date.getDate() + days);
-    setDate(newDate);
-  };
-  const getFormattedDate = (dateObj) => {
-    const day = String(dateObj.getDate()).padStart(2, "0");
-    const month = String(dateObj.getMonth() + 1).padStart(2, "0");
-    const year = dateObj.getFullYear();
-    return `${day}/${month}/${year}`;
-  };
-
-  const handleSave = () => {
-    if (!amount || !selectedCategory) {
-      Alert.alert("Thiếu thông tin", "Vui lòng nhập số tiền và chọn danh mục!");
-      return;
-    }
-    const rawAmount = parseInt(amount.replace(/\./g, ""));
-    console.log("Saving Transaction:", {
-      type: transactionType,
-      amount: rawAmount,
-      category: selectedCategory,
-      date: date.toISOString(),
-      note,
-    });
-    Alert.alert(
-      "Thành công",
-      `Đã lưu ${amount} đ vào mục ${selectedCategory.name}!`
-    );
-    setAmount("");
-    setNote("");
-    setSelectedCategory(null);
-  };
-
-  const handleAddNewCategory = () => {
-    if (!newCatName.trim()) {
-      Alert.alert("Thông báo", "Vui lòng nhập tên danh mục!");
-      return;
-    }
-    // Lấy màu ngẫu nhiên từ file data.js
-    const randomColor =
-      MATERIAL_COLORS[Math.floor(Math.random() * MATERIAL_COLORS.length)];
-
-    const newCategory = {
-      id: Date.now(),
-      name: newCatName,
-      icon: newCatIcon,
-      color: randomColor,
-    };
-
-    if (transactionType === "EXPENSE") {
-      setExpenseCategories([...expenseCategories, newCategory]);
-    } else {
-      setIncomeCategories([...incomeCategories, newCategory]);
-    }
-    setNewCatName("");
-    setNewCatIcon("star");
-    setShowAddCatModal(false);
-    setSelectedCategory(newCategory);
-  };
-
-  const currentCategories =
-    transactionType === "EXPENSE" ? expenseCategories : incomeCategories;
-
-  const categoryColumns = [];
-  for (let i = 0; i < currentCategories.length; i += 2) {
-    categoryColumns.push(currentCategories.slice(i, i + 2));
-  }
+  const {
+    user,
+    isCatLoading,
+    transactionType,
+    setTransactionType,
+    amount,
+    handleAmountChange,
+    selectedCategory,
+    setSelectedCategory,
+    note,
+    setNote,
+    date,
+    showAddCatModal,
+    setShowAddCatModal,
+    showDatePicker,
+    setShowDatePicker,
+    newCatName,
+    setNewCatName,
+    newCatIcon,
+    setNewCatIcon,
+    newCatColor,
+    setNewCatColor,
+    isEditing,
+    categoryColumns,
+    currentCategories,
+    onChangeDate,
+    changeDateBy,
+    getFormattedDate,
+    handleSave,
+    openAddModal,
+    handleLongPressCategory,
+    handleSaveCategory,
+    handleDeleteCategory,
+    alertVisible,
+    setAlertVisible,
+    alertConfig,
+  } = useHomeViewModel(navigation);
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F9F9F9" />
-
-      {/* --- HEADER CỐ ĐỊNH (Nằm ngoài ScrollView) --- */}
-      <MainHeader />
+      <MainHeader user={user} />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -148,16 +79,18 @@ export default function Home({ navigation }) {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 120 }}
         >
-          {/* INPUT SECTION */}
           <View style={styles.inputSection}>
-            {/* SWITCH CHI TIÊU / THU NHẬP */}
+            {/* --- SWITCH THU / CHI --- */}
             <View style={styles.switchContainer}>
               <TouchableOpacity
                 style={[
                   styles.switchBtn,
                   transactionType === "EXPENSE" && styles.switchBtnActive,
                 ]}
-                onPress={() => setTransactionType("EXPENSE")}
+                onPress={() => {
+                  setTransactionType("EXPENSE");
+                  setSelectedCategory(null);
+                }}
               >
                 <Text
                   style={[
@@ -173,7 +106,10 @@ export default function Home({ navigation }) {
                   styles.switchBtn,
                   transactionType === "INCOME" && styles.switchBtnActive,
                 ]}
-                onPress={() => setTransactionType("INCOME")}
+                onPress={() => {
+                  setTransactionType("INCOME");
+                  setSelectedCategory(null);
+                }}
               >
                 <Text
                   style={[
@@ -186,7 +122,7 @@ export default function Home({ navigation }) {
               </TouchableOpacity>
             </View>
 
-            {/* NGÀY THÁNG */}
+            {/* --- NGÀY THÁNG --- */}
             <View style={styles.dateControlRow}>
               <TouchableOpacity
                 onPress={() => changeDateBy(-1)}
@@ -214,7 +150,7 @@ export default function Home({ navigation }) {
               </TouchableOpacity>
             </View>
 
-            {/* NHẬP TIỀN */}
+            {/* --- SỐ TIỀN --- */}
             <View style={styles.amountInputContainer}>
               <Text style={styles.currencySymbol}>₫</Text>
               <TextInput
@@ -227,76 +163,97 @@ export default function Home({ navigation }) {
               />
             </View>
 
-            {/* DANH MỤC */}
+            {/* --- DANH MỤC --- */}
             <Text style={styles.sectionTitle}>Danh mục</Text>
             <View style={{ height: 190, marginBottom: 15 }}>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ paddingRight: 20 }}
-              >
-                {categoryColumns.map((col, colIndex) => (
-                  <View key={colIndex} style={styles.columnContainer}>
-                    {col.map((cat) => (
-                      <TouchableOpacity
-                        key={cat.id}
-                        style={[
-                          styles.categoryItemBox,
-                          selectedCategory?.id === cat.id &&
-                            styles.categoryItemBoxSelected,
-                        ]}
-                        onPress={() => setSelectedCategory(cat)}
-                      >
-                        <View
-                          style={[
-                            styles.iconCircle,
-                            { backgroundColor: cat.color + "20" },
-                          ]}
-                        >
-                          <FontAwesome5
-                            name={cat.icon}
-                            size={20}
-                            color={cat.color}
-                          />
-                        </View>
-                        <Text style={styles.categoryName} numberOfLines={1}>
-                          {cat.name}
-                        </Text>
-                        {selectedCategory?.id === cat.id && (
-                          <View style={styles.checkMark}>
-                            <Ionicons
-                              name="checkmark-circle"
-                              size={16}
-                              color="#1F41BB"
-                            />
-                          </View>
-                        )}
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                ))}
+              {isCatLoading ? (
+                <ActivityIndicator
+                  size="small"
+                  color="#1F41BB"
+                  style={{ marginTop: 50 }}
+                />
+              ) : (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ paddingRight: 20 }}
+                >
+                  {currentCategories.length > 0 ? (
+                    categoryColumns.map((col, colIndex) => (
+                      <View key={colIndex} style={styles.columnContainer}>
+                        {col.map((cat) => (
+                          <TouchableOpacity
+                            key={cat.id}
+                            style={[
+                              styles.categoryItemBox,
+                              selectedCategory?.id === cat.id &&
+                                styles.categoryItemBoxSelected,
+                            ]}
+                            onPress={() => setSelectedCategory(cat)}
+                            onLongPress={() => handleLongPressCategory(cat)} // Long Press để Sửa/Xóa
+                            delayLongPress={500}
+                          >
+                            <View
+                              style={[
+                                styles.iconCircle,
+                                {
+                                  backgroundColor: (cat.color || "#999") + "20",
+                                },
+                              ]}
+                            >
+                              <FontAwesome5
+                                name={cat.icon || "question"}
+                                size={20}
+                                color={cat.color || "#999"}
+                              />
+                            </View>
+                            <Text style={styles.categoryName} numberOfLines={1}>
+                              {cat.name}
+                            </Text>
 
-                {/* Nút Thêm Danh Mục */}
-                <View style={styles.columnContainer}>
-                  <TouchableOpacity
-                    style={styles.categoryItemBox}
-                    onPress={() => setShowAddCatModal(true)}
-                  >
-                    <View
-                      style={[
-                        styles.iconCircle,
-                        { backgroundColor: "#F0F0F0" },
-                      ]}
-                    >
-                      <Ionicons name="add" size={24} color="#999" />
+                            {selectedCategory?.id === cat.id && (
+                              <View style={styles.checkMark}>
+                                <Ionicons
+                                  name="checkmark-circle"
+                                  size={16}
+                                  color="#1F41BB"
+                                />
+                              </View>
+                            )}
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    ))
+                  ) : (
+                    <View style={{ justifyContent: "center", paddingLeft: 10 }}>
+                      <Text style={{ color: "#999", fontSize: 14 }}>
+                        Chưa có danh mục
+                      </Text>
                     </View>
-                    <Text style={styles.categoryName}>Khác</Text>
-                  </TouchableOpacity>
-                </View>
-              </ScrollView>
+                  )}
+
+                  {/* NÚT THÊM DANH MỤC */}
+                  <View style={styles.columnContainer}>
+                    <TouchableOpacity
+                      style={styles.categoryItemBox}
+                      onPress={openAddModal}
+                    >
+                      <View
+                        style={[
+                          styles.iconCircle,
+                          { backgroundColor: "#F0F0F0" },
+                        ]}
+                      >
+                        <Ionicons name="add" size={24} color="#999" />
+                      </View>
+                      <Text style={styles.categoryName}>Khác</Text>
+                    </TouchableOpacity>
+                  </View>
+                </ScrollView>
+              )}
             </View>
 
-            {/* GHI CHÚ */}
+            {/* --- GHI CHÚ & LƯU --- */}
             <Text style={styles.sectionTitle}>Ghi chú</Text>
             <View style={styles.noteContainer}>
               <MaterialCommunityIcons
@@ -306,17 +263,11 @@ export default function Home({ navigation }) {
               />
               <TextInput
                 style={styles.noteInput}
-                placeholder={
-                  transactionType === "EXPENSE"
-                    ? "VD: Ăn sáng..."
-                    : "VD: Lương tháng..."
-                }
+                placeholder="Ghi chú..."
                 value={note}
                 onChangeText={setNote}
               />
             </View>
-
-            {/* NÚT LƯU */}
             <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
               <Text style={styles.saveButtonText}>Lưu giao dịch</Text>
             </TouchableOpacity>
@@ -324,47 +275,45 @@ export default function Home({ navigation }) {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* --- CÁC MODAL --- */}
-
-      {/* MODAL DATE PICKER */}
-      {showDatePicker && Platform.OS === "ios" && (
-        <Modal
-          transparent={true}
-          animationType="fade"
-          visible={showDatePicker}
-          onRequestClose={() => setShowDatePicker(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <DateTimePicker
-                value={date}
-                mode="date"
-                display="inline"
-                onChange={onChangeDate}
-                themeVariant="light"
-                textColor="#000000"
-                style={{ width: 310, height: 310, backgroundColor: "white" }}
-              />
-              <TouchableOpacity
-                style={styles.closeModalButton}
-                onPress={() => setShowDatePicker(false)}
-              >
-                <Text style={styles.closeModalText}>Xong</Text>
-              </TouchableOpacity>
+      {/* --- MODAL CHỌN NGÀY --- */}
+      {showDatePicker &&
+        (Platform.OS === "ios" ? (
+          <Modal
+            transparent={true}
+            animationType="fade"
+            visible={showDatePicker}
+            onRequestClose={() => setShowDatePicker(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <DateTimePicker
+                  value={date}
+                  mode="date"
+                  display="inline"
+                  onChange={onChangeDate}
+                  themeVariant="light"
+                  textColor="#000000"
+                  style={{ width: 310, height: 310, backgroundColor: "white" }}
+                />
+                <TouchableOpacity
+                  style={styles.closeModalButton}
+                  onPress={() => setShowDatePicker(false)}
+                >
+                  <Text style={styles.closeModalText}>Xong</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
-        </Modal>
-      )}
-      {showDatePicker && Platform.OS === "android" && (
-        <DateTimePicker
-          value={date}
-          mode="date"
-          display="default"
-          onChange={onChangeDate}
-        />
-      )}
+          </Modal>
+        ) : (
+          <DateTimePicker
+            value={date}
+            mode="date"
+            display="default"
+            onChange={onChangeDate}
+          />
+        ))}
 
-      {/* MODAL THÊM DANH MỤC */}
+      {/* --- MODAL THÊM / SỬA DANH MỤC --- */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -373,15 +322,52 @@ export default function Home({ navigation }) {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.addCategoryModal}>
-            <Text style={styles.modalTitle}>Thêm danh mục mới</Text>
+            {/* Header Modal: Title + Delete Button */}
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 20,
+              }}
+            >
+              <Text style={styles.modalTitle}>
+                {isEditing ? "Sửa danh mục" : "Thêm mới"}
+              </Text>
+              {isEditing && (
+                <TouchableOpacity
+                  onPress={handleDeleteCategory}
+                  style={{ padding: 5 }}
+                >
+                  <Ionicons name="trash-outline" size={24} color="#F44336" />
+                </TouchableOpacity>
+              )}
+            </View>
 
             <Text style={styles.inputLabel}>Tên danh mục</Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="VD: Trà sữa, Gym..."
+              placeholder="VD: Ăn sáng..."
               value={newCatName}
               onChangeText={setNewCatName}
             />
+
+            <Text style={styles.inputLabel}>Chọn màu</Text>
+            <View style={{ height: 50, marginBottom: 10 }}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {MATERIAL_COLORS.map((color, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.colorCircle,
+                      { backgroundColor: color },
+                      newCatColor === color && styles.colorCircleSelected,
+                    ]}
+                    onPress={() => setNewCatColor(color)}
+                  />
+                ))}
+              </ScrollView>
+            </View>
 
             <Text style={styles.inputLabel}>Chọn biểu tượng</Text>
             <View style={styles.iconGridContainer}>
@@ -389,12 +375,15 @@ export default function Home({ navigation }) {
                 data={AVAILABLE_ICONS}
                 numColumns={5}
                 keyExtractor={(item) => item}
-                showsVerticalScrollIndicator={true}
                 renderItem={({ item }) => (
                   <TouchableOpacity
                     style={[
                       styles.iconSelectBtn,
                       newCatIcon === item && styles.iconSelectBtnActive,
+                      {
+                        backgroundColor:
+                          newCatIcon === item ? newCatColor : "#F0F0F0",
+                      },
                     ]}
                     onPress={() => setNewCatIcon(item)}
                   >
@@ -416,23 +405,33 @@ export default function Home({ navigation }) {
                 <Text style={styles.modalCancelText}>Hủy</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={styles.modalSaveBtn}
-                onPress={handleAddNewCategory}
+                style={[styles.modalSaveBtn, { backgroundColor: newCatColor }]}
+                onPress={handleSaveCategory}
               >
-                <Text style={styles.modalSaveText}>Tạo mới</Text>
+                <Text style={styles.modalSaveText}>
+                  {isEditing ? "Cập nhật" : "Tạo mới"}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
+
+      {/* --- CUSTOM ALERT (LUÔN ĐỂ Ở CUỐI) --- */}
+      <CustomAlert
+        visible={alertVisible}
+        title={alertConfig.title}
+        message={alertConfig.message}
+        type={alertConfig.type}
+        onCancel={() => setAlertVisible(false)}
+        onConfirm={alertConfig.onConfirm}
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F9F9F9" },
-
-  // Style cho phần Input (Card trắng)
   inputSection: {
     backgroundColor: "#FFFFFF",
     borderTopLeftRadius: 30,
@@ -446,7 +445,6 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 5,
   },
-
   switchContainer: {
     flexDirection: "row",
     backgroundColor: "#F1F4FF",
@@ -468,7 +466,6 @@ const styles = StyleSheet.create({
   },
   switchText: { fontFamily: "Montserrat-Medium", color: "#999" },
   switchTextActive: { fontFamily: "Montserrat-SemiBold", color: "#1F41BB" },
-
   dateControlRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -488,7 +485,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   dateText: { fontFamily: "Montserrat-SemiBold", color: "#333", fontSize: 15 },
-
   amountInputContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -509,7 +505,6 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat-Bold",
     color: "#333",
   },
-
   sectionTitle: {
     fontFamily: "Montserrat-SemiBold",
     fontSize: 16,
@@ -556,7 +551,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   checkMark: { position: "absolute", top: 5, right: 5 },
-
   noteContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -622,13 +616,7 @@ const styles = StyleSheet.create({
     width: "90%",
     maxHeight: "80%",
   },
-  modalTitle: {
-    fontFamily: "Montserrat-Bold",
-    fontSize: 18,
-    color: "#333",
-    textAlign: "center",
-    marginBottom: 20,
-  },
+  modalTitle: { fontFamily: "Montserrat-Bold", fontSize: 18, color: "#333" },
   inputLabel: {
     fontFamily: "Montserrat-SemiBold",
     fontSize: 14,
@@ -686,5 +674,18 @@ const styles = StyleSheet.create({
     fontFamily: "Montserrat-Bold",
     color: "#FFFFFF",
     fontSize: 16,
+  },
+  colorCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginHorizontal: 5,
+    borderWidth: 2,
+    borderColor: "white",
+  },
+  colorCircleSelected: {
+    borderColor: "#333",
+    borderWidth: 2,
+    transform: [{ scale: 1.1 }],
   },
 });
