@@ -1,35 +1,30 @@
 const User = require("../models/User");
-const Category = require("../models/Category"); // <--- Import Model Category để copy danh mục
+const Category = require("../models/Category");
 
 // --- XỬ LÝ ĐĂNG KÝ ---
 exports.register = async (req, res) => {
   const { email, password, name } = req.body;
 
-  // 1. Kiểm tra đầu vào
   if (!email || !password || !name) {
-    return res
-      .status(400)
-      .json({
-        message: "Vui lòng nhập đầy đủ thông tin (email, mật khẩu, tên)",
-      });
+    return res.status(400).json({
+      message: "Vui lòng nhập đầy đủ thông tin (email, mật khẩu, tên)",
+    });
   }
 
   try {
-    // 2. Kiểm tra xem Email đã tồn tại chưa
+    // 1. Kiểm tra Email
     const existingUser = await User.findByEmail(email);
     if (existingUser) {
       return res.status(400).json({ message: "Email này đã được sử dụng." });
     }
 
-    // 3. Tạo User mới trong Database
+    // 2. Tạo User
     const [result] = await User.create(email, password, name);
     const newUserId = result.insertId;
 
-    // 4. [QUAN TRỌNG] Sao chép danh mục mẫu (NULL) sang cho User mới này
-    // Giúp User có sẵn danh mục để dùng, và có thể sửa/xóa thoải mái
-    await Category.copyDefaultsToUser(newUserId);
+    // 3. [QUAN TRỌNG] Copy danh mục từ Database sang cho User mới
+    await Category.copyDefaults(newUserId);
 
-    // 5. Trả về kết quả thành công
     res.status(201).json({
       message: "Đăng ký thành công",
       userId: newUserId,
@@ -44,7 +39,6 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
   const { email, password } = req.body;
 
-  // 1. Kiểm tra đầu vào
   if (!email || !password) {
     return res
       .status(400)
@@ -52,23 +46,28 @@ exports.login = async (req, res) => {
   }
 
   try {
-    // 2. Tìm User theo Email
     const user = await User.findByEmail(email);
 
-    // 3. Kiểm tra User tồn tại
     if (!user) {
-      return res
-        .status(400)
-        .json({ message: "Email không tồn tại hoặc chưa đăng ký." });
+      return res.status(400).json({ message: "Email không tồn tại." });
     }
 
-    // 4. Kiểm tra mật khẩu (Lưu ý: Trong thực tế nên dùng bcrypt để mã hóa, ở đây so sánh trực tiếp theo code hiện tại)
-    // Giả sử cột mật khẩu trong DB là PASSWORD
-    if (user.PASSWORD !== password) {
+    // So sánh mật khẩu (Chú ý: Cột trong DB là USER_PASSWORD)
+    if (user.USER_PASSWORD !== password) {
       return res.status(400).json({ message: "Mật khẩu không chính xác." });
     }
 
-    // 5. Đăng nhập thành công -> Trả về thông tin User (trừ mật khẩu)
+    // --- LOGIC TỰ ĐỘNG COPY DANH MỤC NẾU USER CHƯA CÓ ---
+    // Giúp user cũ cập nhật danh sách mới mà không cần đăng ký lại
+    const hasData = await Category.checkHasCategories(user.USER_ID);
+    if (!hasData) {
+      console.log(
+        `User ID ${user.USER_ID} chưa có danh mục. Đang copy từ mẫu...`,
+      );
+      await Category.copyDefaults(user.USER_ID);
+    }
+    // -----------------------------------------------------
+
     res.status(200).json({
       message: "Đăng nhập thành công",
       user: {
@@ -79,6 +78,6 @@ exports.login = async (req, res) => {
     });
   } catch (error) {
     console.error("Lỗi Đăng Nhập:", error);
-    res.status(500).json({ message: "Lỗi Server khi xử lý đăng nhập." });
+    res.status(500).json({ message: "Lỗi Server." });
   }
 };

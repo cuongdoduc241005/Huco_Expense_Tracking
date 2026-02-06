@@ -1,159 +1,91 @@
-/**
- * FILE: useStatsViewModel.js
- * VAI TRÒ: Logic xử lý số liệu cho màn hình Thống kê (Stats)
- * CHỨC NĂNG:
- * 1. Lấy dữ liệu từ API.
- * 2. Xử lý dữ liệu cho Biểu đồ Xu hướng (Line/Bar Chart).
- * 3. Xử lý dữ liệu cho Biểu đồ Tròn (Pie Chart).
- */
+// src/viewmodels/useStatsViewModel.js
+import { useState, useEffect, useMemo, useCallback } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { API_URL } from "../config/Config";
 
-import { useState, useEffect, useMemo } from "react";
-import { TransactionService } from "../models/TransactionService";
-import { Dimensions } from "react-native";
-
-const { width } = Dimensions.get("window");
-
-// Cấu hình Pie Chart
-const PIE_RADIUS = width / 3.2;
-
-export const useStatsViewModel = (user) => {
-  const [transactions, setTransactions] = useState([]); // Dữ liệu thô
+export const useStatsViewModel = (initialUser) => {
+  const [pieData, setPieData] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
-
-  // State bộ lọc
-  const [transactionType, setTransactionType] = useState("EXPENSE"); // EXPENSE | INCOME
-  const [selectedUnit, setSelectedUnit] = useState("1d"); // 1d, 1w, 1m...
-
-  // State tương tác biểu đồ
-  const [selectedBarIndex, setSelectedBarIndex] = useState(null);
+  const [transactionType, setTransactionType] = useState("EXPENSE");
   const [selectedSliceIndex, setSelectedSliceIndex] = useState(null);
+  const [date, setDate] = useState(new Date());
 
-  // 1. Hàm lấy dữ liệu
-  const fetchTransactions = async () => {
-    if (!user?.USER_ID) return;
+  const fetchStats = async () => {
     setIsLoading(true);
     try {
-      const data = await TransactionService.getAll(user.USER_ID);
-      setTransactions(data);
+      const userJson = await AsyncStorage.getItem("user");
+      const user = userJson ? JSON.parse(userJson) : initialUser;
+      if (!user?.USER_ID) return;
+
+      const month = date.getMonth() + 1;
+      const year = date.getFullYear();
+
+      // TRUYỀN THAM SỐ month VÀ year VÀO API
+      const response = await fetch(
+        `${API_URL}/transactions/stats/${user.USER_ID}?type=${transactionType}&month=${month}&year=${year}`,
+      );
+      const data = await response.json();
+
+      if (data.pieData && data.pieData.length > 0) {
+        const total = data.pieData.reduce(
+          (sum, item) => sum + Number(item.amount),
+          0,
+        );
+        let currentAngle = -Math.PI / 2;
+
+        const formattedPie = data.pieData.map((item) => {
+          const amount = Number(item.amount);
+          const sliceAngle = (amount / total) * (Math.PI * 2);
+          const res = {
+            ...item,
+            amount,
+            percent: amount / total,
+            startAngle: currentAngle,
+            endAngle: currentAngle + sliceAngle,
+          };
+          currentAngle += sliceAngle;
+          return res;
+        });
+        setPieData(formattedPie);
+      } else {
+        setPieData([]);
+      }
     } catch (error) {
-      console.error("Lỗi Stats:", error);
+      console.error("Lỗi fetchStats:", error);
+      setPieData([]);
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchTransactions();
-  }, [user]);
+    fetchStats();
+  }, [transactionType, date]);
 
-  // Khi đổi loại (Thu/Chi), reset các selection
-  useEffect(() => {
-    setSelectedBarIndex(null);
-    setSelectedSliceIndex(null);
-  }, [transactionType]);
+  const changeMonthBy = (offset) => {
+    const newDate = new Date(date);
+    newDate.setMonth(date.getMonth() + offset);
+    setDate(newDate); // Cập nhật state date
+  };
 
-  // 2. Logic xử lý BIỂU ĐỒ XU HƯỚNG (Line/Bar Chart)
-  const chartData = useMemo(() => {
-    // Lọc theo loại
-    const filtered = transactions.filter((t) => t.type === transactionType);
-
-    // Sắp xếp tăng dần theo thời gian
-    const sorted = [...filtered].sort(
-      (a, b) => new Date(a.date) - new Date(b.date),
-    );
-
-    // Nhóm dữ liệu theo ngày (Logic đơn giản cho demo "Ngày")
-    // Bạn có thể mở rộng logic này cho Tuần/Tháng dựa vào selectedUnit
-    const grouped = {};
-
-    sorted.forEach((item) => {
-      const date = new Date(item.date);
-      const day = date.getDate();
-      const month = date.getMonth() + 1;
-
-      // Key là "d/m"
-      const key = `${day}/${month}`;
-
-      if (!grouped[key]) {
-        grouped[key] = {
-          label: key,
-          day: day, // Dùng để check hiển thị label
-          value: 0,
-        };
-      }
-      grouped[key].value += Number(item.amount);
-    });
-
-    return Object.values(grouped);
-  }, [transactions, transactionType]); // Chỉ tính lại khi data hoặc loại thay đổi
-
-  // 3. Logic xử lý BIỂU ĐỒ TRÒN (Pie Chart)
-  const pieDataObj = useMemo(() => {
-    // Lọc data
-    const filtered = transactions.filter((t) => t.type === transactionType);
-
-    // Nhóm theo Danh mục (Category)
-    const catMap = {};
-
-    filtered.forEach((t) => {
-      // Dữ liệu từ API đã có sẵn category, icon, color
-      const catName = t.category || "Khác";
-
-      if (!catMap[catName]) {
-        catMap[catName] = {
-          id: t.categoryId || catName, // Dùng tên làm ID tạm nếu null
-          name: catName,
-          icon: t.icon || "question",
-          color: t.color || "#999",
-          amount: 0,
-        };
-      }
-      catMap[catName].amount += Number(t.amount);
-    });
-
-    // Sắp xếp giảm dần & Lấy Top 5
-    let data = Object.values(catMap)
-      .sort((a, b) => b.amount - a.amount)
-      .slice(0, 5);
-
-    // Tính tổng tiền của Top 5 (hoặc toàn bộ tùy logic)
-    const total = data.reduce((sum, item) => sum + item.amount, 0);
-
-    // Tính góc (Angle) cho SVG
-    let currentAngle = 0;
-    data = data.map((item) => {
-      const percent = total === 0 ? 0 : item.amount / total;
-      const angle = percent * 2 * Math.PI; // Đổi sang Radian
-
-      const itemData = {
-        ...item,
-        percent,
-        startAngle: currentAngle,
-        endAngle: currentAngle + angle,
-      };
-
-      currentAngle += angle;
-      return itemData;
-    });
-
-    return { data, total };
-  }, [transactions, transactionType]);
+  const pieTotal = useMemo(
+    () => pieData.reduce((s, i) => s + Number(i.amount), 0),
+    [pieData],
+  );
 
   return {
     isLoading,
     transactionType,
     setTransactionType,
-    selectedUnit,
-    setSelectedUnit,
-    selectedBarIndex,
-    setSelectedBarIndex,
     selectedSliceIndex,
     setSelectedSliceIndex,
-
-    chartData, // Data cho Bar Chart
-    pieData: pieDataObj.data, // List danh mục Top 5
-    pieTotal: pieDataObj.total, // Tổng tiền hiển thị giữa vòng tròn
-
-    refreshData: fetchTransactions,
+    pieData,
+    pieTotal,
+    date,
+    setDate,
+    changeMonthBy,
+    refreshData: fetchStats,
+    chartData: [],
+    selectedUnit: "1m",
   };
 };

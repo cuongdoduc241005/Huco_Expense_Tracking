@@ -11,13 +11,15 @@ import {
   Platform,
   ActivityIndicator,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context"; // Fix lỗi SafeAreaView cũ
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons, FontAwesome5 } from "@expo/vector-icons";
 
-// Components & ViewModel
+// Components
 import MyButton from "../components/Button";
-import CustomAlert from "../components/CustomAlert"; // Import Alert đẹp
-import { useRegisterViewModel } from "../viewmodels/useRegisterViewModel";
+import CustomAlert from "../components/CustomAlert";
+
+// Import ViewModel (Không có ngoặc nhọn)
+import useRegisterViewModel from "../viewmodels/useRegisterViewModel";
 
 export default function Register({ navigation }) {
   // Kết nối ViewModel
@@ -102,14 +104,14 @@ export default function Register({ navigation }) {
             <View
               style={[
                 styles.passwordWrapper,
-                focusedInput === "password" && styles.inputFocused, // Hiệu ứng focus cho cả khung
+                focusedInput === "password" && styles.inputFocused,
               ]}
             >
               <TextInput
                 style={[
                   styles.input,
                   styles.inputNoMargin,
-                  { flex: 1, borderWidth: 0, height: "100%" }, // Fix style để input full chiều cao
+                  { flex: 1, borderWidth: 0, height: "100%" },
                 ]}
                 placeholder="Mật khẩu"
                 placeholderTextColor="#626262"
@@ -164,7 +166,7 @@ export default function Register({ navigation }) {
               </TouchableOpacity>
             </View>
 
-            {/* Button Đăng ký / Loading Indicator */}
+            {/* Button Đăng ký */}
             <View style={styles.registerButtonWrapper}>
               {isLoading ? (
                 <ActivityIndicator size="large" color="#1F41BB" />
@@ -262,7 +264,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     borderWidth: 2,
     borderColor: "transparent",
-    height: 60, // Fix chiều cao cố định để không bị lệch
+    height: 60,
   },
   eyeBtn: { paddingRight: 15 },
   registerButtonWrapper: {

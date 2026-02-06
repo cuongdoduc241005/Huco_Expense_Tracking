@@ -1,65 +1,65 @@
-import { useState, useCallback, useLayoutEffect } from "react";
-import { Alert, Platform } from "react-native";
+import { useState, useCallback, useEffect } from "react";
+import { Platform, Alert } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
+import * as Haptics from "expo-haptics";
 
 import { CategoryService } from "../models/CategoryService";
 import { TransactionService } from "../models/TransactionService";
 import { MATERIAL_COLORS } from "../constants/Color_Icon";
 
 export const useHomeViewModel = (navigation) => {
+  // --- STATE NGƯỜI DÙNG & DANH MỤC ---
   const [user, setUser] = useState(null);
   const [expenseCategories, setExpenseCategories] = useState([]);
   const [incomeCategories, setIncomeCategories] = useState([]);
   const [isCatLoading, setIsCatLoading] = useState(false);
 
-  // Form State
+  // --- STATE FORM GIAO DỊCH ---
   const [transactionType, setTransactionType] = useState("EXPENSE");
   const [amount, setAmount] = useState("");
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [note, setNote] = useState("");
   const [date, setDate] = useState(new Date());
+  const [editingTransactionId, setEditingTransactionId] = useState(null); // ID giao dịch đang sửa
 
-  // Modal State
+  // --- STATE MODAL & UI ---
   const [showAddCatModal, setShowAddCatModal] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
-
-  // --- STATE QUẢN LÝ SỬA/THÊM ---
   const [newCatName, setNewCatName] = useState("");
   const [newCatIcon, setNewCatIcon] = useState("star");
   const [newCatColor, setNewCatColor] = useState(MATERIAL_COLORS[0]);
-  const [isEditing, setIsEditing] = useState(false); // Đang ở chế độ sửa hay thêm?
-  const [editingCatId, setEditingCatId] = useState(null); // ID của danh mục đang sửa
+  const [isEditing, setIsEditing] = useState(false); // Chế độ sửa danh mục
+  const [editingCatId, setEditingCatId] = useState(null);
 
-  useLayoutEffect(() => {
-    navigation.setOptions({ gestureEnabled: false, headerLeft: () => null });
-  }, [navigation]);
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({
+    title: "",
+    message: "",
+    type: "success",
+  });
+
+  const showAlert = (title, message, type = "success", onConfirm = null) => {
+    setAlertConfig({ title, message, type, onConfirm });
+    setAlertVisible(true);
+  };
 
   const loadData = async () => {
     setIsCatLoading(true);
     try {
       const userJson = await AsyncStorage.getItem("user");
-      if (!userJson) {
-        setIsCatLoading(false);
-        return;
-      }
-
+      if (!userJson) return;
       const userData = JSON.parse(userJson);
       setUser(userData);
-      const userId = userData.USER_ID || userData.userId || userData.id;
+      const data = await CategoryService.getAll(userData.USER_ID);
 
-      const allCats = await CategoryService.getAll(userId);
-      const expenses = allCats.filter(
-        (c) => c.type && c.type.toUpperCase() === "EXPENSE",
-      );
-      const incomes = allCats.filter(
-        (c) => c.type && c.type.toUpperCase() === "INCOME",
-      );
+      const exp = data.filter((c) => c.type === "EXPENSE");
+      const inc = data.filter((c) => c.type === "INCOME");
 
-      setExpenseCategories(expenses);
-      setIncomeCategories(incomes);
-    } catch (error) {
-      console.error(error);
+      setExpenseCategories(exp);
+      setIncomeCategories(inc);
+    } catch (e) {
+      console.error(e);
     } finally {
       setIsCatLoading(false);
     }
@@ -68,151 +68,147 @@ export const useHomeViewModel = (navigation) => {
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, []),
+    }, [transactionType]),
   );
 
-  // --- HÀM 1: MỞ MODAL ĐỂ THÊM MỚI ---
-  const openAddModal = () => {
-    setNewCatName("");
-    setNewCatIcon("star");
-    setNewCatColor(MATERIAL_COLORS[0]);
-    setIsEditing(false); // Chế độ thêm
-    setEditingCatId(null);
+  // --- LOGIC TIẾP NHẬN DỮ LIỆU SỬA GIAO DỊCH TỪ RECENT ---
+  const initEditMode = (item) => {
+    if (!item) return;
+    setEditingTransactionId(item.id);
+    setAmount(item.amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, "."));
+    setNote(item.note || "");
+    setDate(new Date(item.date));
+    setTransactionType(item.type);
+
+    // Tìm và chọn lại danh mục tương ứng trong list
+    const list = item.type === "EXPENSE" ? expenseCategories : incomeCategories;
+    const found = list.find((c) => c.name === item.category);
+    if (found) setSelectedCategory(found);
+  };
+
+  // --- QUẢN LÝ DANH MỤC (CATEGORY) ---
+  const handleLongPressCategory = (cat) => {
+    if (Platform.OS !== "web")
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setEditingCatId(cat.id);
+    setNewCatName(cat.name);
+    setNewCatIcon(cat.icon);
+    setNewCatColor(cat.color || MATERIAL_COLORS[0]);
+    setIsEditing(true);
     setShowAddCatModal(true);
   };
 
-  // --- HÀM 2: XỬ LÝ ẤN GIỮ (HIỆN MENU SỬA/XÓA) ---
-  const handleLongPressCategory = (cat) => {
-    Alert.alert("Tùy chọn danh mục", `Bạn muốn làm gì với "${cat.name}"?`, [
-      { text: "Hủy", style: "cancel" },
-      {
-        text: "✏️ Sửa",
-        onPress: () => {
-          // Đổ dữ liệu cũ vào Modal
-          setNewCatName(cat.name);
-          setNewCatIcon(cat.icon);
-          setNewCatColor(cat.color || MATERIAL_COLORS[0]);
-
-          // Bật chế độ sửa
-          setIsEditing(true);
-          setEditingCatId(cat.id);
-          setShowAddCatModal(true);
-        },
-      },
-      {
-        text: "🗑️ Xóa",
-        style: "destructive",
-        onPress: () => confirmDelete(cat),
-      },
-    ]);
-  };
-
-  // --- HÀM 3: LƯU (QUYẾT ĐỊNH GỌI API THÊM HAY SỬA) ---
   const handleSaveCategory = async () => {
-    if (!newCatName.trim()) {
-      Alert.alert("Thông báo", "Vui lòng nhập tên danh mục");
-      return;
-    }
-    const userId = user?.USER_ID || user?.userId || user?.id;
-
+    if (!newCatName.trim())
+      return showAlert("Lỗi", "Vui lòng nhập tên", "error");
     try {
       if (isEditing) {
-        // --- GỌI API SỬA ---
         await CategoryService.update(editingCatId, {
-          userId,
+          userId: user.USER_ID,
           name: newCatName,
           icon: newCatIcon,
           color: newCatColor,
         });
-        Alert.alert("Thành công", "Đã cập nhật danh mục!");
       } else {
-        // --- GỌI API THÊM ---
         await CategoryService.create({
-          userId,
+          userId: user.USER_ID,
           name: newCatName,
           type: transactionType,
           icon: newCatIcon,
           color: newCatColor,
         });
-        Alert.alert("Thành công", "Đã thêm danh mục mới!");
+      }
+      setShowAddCatModal(false);
+      setTimeout(() => loadData(), 300);
+    } catch (e) {
+      showAlert("Lỗi", "Không thể lưu danh mục", "error");
+    }
+  };
+
+  const handleDeleteCategory = () => {
+    if (!editingCatId) return;
+    setShowAddCatModal(false);
+    setTimeout(() => {
+      showAlert(
+        "Xác nhận xóa",
+        `Xóa danh mục "${newCatName}"?`,
+        "warning",
+        async () => {
+          try {
+            await CategoryService.delete(editingCatId, user?.USER_ID);
+            if (Platform.OS !== "web")
+              Haptics.notificationAsync(
+                Haptics.NotificationFeedbackType.Success,
+              );
+            setAlertVisible(false);
+            if (selectedCategory?.id === editingCatId)
+              setSelectedCategory(null);
+            loadData();
+          } catch (error) {
+            setAlertVisible(false);
+            Alert.alert(
+              "Lỗi",
+              "Danh mục này đang có giao dịch, không thể xóa.",
+            );
+          }
+        },
+      );
+    }, 400);
+  };
+
+  // --- QUẢN LÝ GIAO DỊCH (TRANSACTION) ---
+  const handleSave = async () => {
+    if (!amount || !selectedCategory) {
+      showAlert("Thông báo", "Vui lòng nhập tiền và chọn danh mục!", "warning");
+      return;
+    }
+
+    const rawAmount = parseInt(amount.replace(/\./g, ""));
+    const formattedDate = date.toISOString().slice(0, 19).replace("T", " ");
+
+    const payload = {
+      userId: user?.USER_ID,
+      categoryId: selectedCategory.id,
+      amount: rawAmount,
+      date: formattedDate,
+      note: note,
+    };
+
+    try {
+      let result;
+      if (editingTransactionId) {
+        // Chế độ CẬP NHẬT
+        result = await TransactionService.update(editingTransactionId, payload);
+      } else {
+        // Chế độ THÊM MỚI
+        result = await TransactionService.create(payload);
       }
 
-      // Refresh lại dữ liệu và đóng modal
-      await loadData();
-      setShowAddCatModal(false);
-    } catch (error) {
-      Alert.alert("Lỗi", "Không thể lưu danh mục.");
-    }
-  };
+      if (result.status === 201 || result.status === 200) {
+        if (Platform.OS !== "web")
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
-  // --- HÀM 4: XÁC NHẬN XÓA ---
-  const confirmDelete = (cat) => {
-    Alert.alert(
-      "Xác nhận xóa",
-      `Xóa danh mục "${cat.name}" sẽ không xóa các giao dịch cũ, nhưng chúng sẽ mất nhãn danh mục.`,
-      [
-        { text: "Hủy", style: "cancel" },
-        {
-          text: "Xóa luôn",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const userId = user?.USER_ID || user?.userId || user?.id;
-              await CategoryService.delete(cat.id, userId);
-              await loadData(); // Reload
-            } catch (e) {
-              Alert.alert("Lỗi", "Không thể xóa danh mục này.");
-            }
+        showAlert(
+          "Thành công",
+          editingTransactionId ? "Đã cập nhật giao dịch!" : "Đã lưu giao dịch!",
+          "success",
+          () => {
+            // Reset form
+            setAmount("");
+            setNote("");
+            setSelectedCategory(null);
+            setEditingTransactionId(null);
+            setAlertVisible(false);
+            // Nếu là sửa thì quay về trang trước đó
+            if (editingTransactionId) navigation.goBack();
           },
-        },
-      ],
-    );
-  };
-
-  // Logic Giao dịch (Giữ nguyên)
-  const formatCurrency = (value) =>
-    value ? value.replace(/\D/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, ".") : "";
-  const handleAmountChange = (text) => setAmount(formatCurrency(text));
-  const onChangeDate = (e, d) => {
-    if (Platform.OS === "android") setShowDatePicker(false);
-    if (d) setDate(d);
-  };
-  const changeDateBy = (d) => {
-    const newD = new Date(date);
-    newD.setDate(date.getDate() + d);
-    setDate(newD);
-  };
-  const getFormattedDate = (d) =>
-    `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
-
-  const handleSave = async () => {
-    if (!amount || !selectedCategory)
-      return Alert.alert("Thiếu thông tin", "Nhập tiền & chọn danh mục");
-    const userId = user?.USER_ID || user?.userId || user?.id;
-    const rawAmount = parseInt(amount.replace(/\./g, ""));
-    try {
-      await TransactionService.create({
-        userId,
-        type: transactionType,
-        amount: rawAmount,
-        categoryId: selectedCategory.id,
-        date: date.toISOString().slice(0, 19).replace("T", " "),
-        note,
-      });
-      Alert.alert("Thành công", "Đã lưu giao dịch!");
-      setAmount("");
-      setNote("");
-      setSelectedCategory(null);
+        );
+      }
     } catch (error) {
-      Alert.alert("Lỗi", "Không thể lưu");
+      console.error("Lỗi handleSave:", error);
+      showAlert("Lỗi", "Không thể kết nối tới máy chủ.", "error");
     }
   };
-
-  const currentCategories =
-    transactionType === "EXPENSE" ? expenseCategories : incomeCategories;
-  const categoryColumns = [];
-  for (let i = 0; i < currentCategories.length; i += 2)
-    categoryColumns.push(currentCategories.slice(i, i + 2));
 
   return {
     user,
@@ -220,7 +216,8 @@ export const useHomeViewModel = (navigation) => {
     transactionType,
     setTransactionType,
     amount,
-    handleAmountChange,
+    handleAmountChange: (t) =>
+      setAmount(t.replace(/[^0-9]/g, "").replace(/\B(?=(\d{3})+(?!\d))/g, ".")),
     selectedCategory,
     setSelectedCategory,
     note,
@@ -230,7 +227,6 @@ export const useHomeViewModel = (navigation) => {
     setShowAddCatModal,
     showDatePicker,
     setShowDatePicker,
-    // State và Hàm mới
     newCatName,
     setNewCatName,
     newCatIcon,
@@ -238,14 +234,40 @@ export const useHomeViewModel = (navigation) => {
     newCatColor,
     setNewCatColor,
     isEditing,
-    openAddModal,
+    editingTransactionId,
+    initEditMode, // Xuất hàm để Component Home sử dụng
+    currentCategories:
+      transactionType === "EXPENSE" ? expenseCategories : incomeCategories,
+    categoryColumns: (() => {
+      const cats =
+        transactionType === "EXPENSE" ? expenseCategories : incomeCategories;
+      const cols = [];
+      for (let i = 0; i < cats.length; i += 2) cols.push(cats.slice(i, i + 2));
+      return cols;
+    })(),
+    onChangeDate: (e, d) => {
+      setShowDatePicker(false);
+      if (d) setDate(d);
+    },
+    changeDateBy: (n) => {
+      const d = new Date(date);
+      d.setDate(d.getDate() + n);
+      setDate(d);
+    },
+    getFormattedDate: (d) =>
+      `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`,
+    handleSave,
+    openAddModal: () => {
+      setIsEditing(false);
+      setNewCatName("");
+      setNewCatIcon("star");
+      setShowAddCatModal(true);
+    },
     handleLongPressCategory,
     handleSaveCategory,
-    categoryColumns,
-    currentCategories,
-    onChangeDate,
-    changeDateBy,
-    getFormattedDate,
-    handleSave,
+    handleDeleteCategory,
+    alertVisible,
+    setAlertVisible,
+    alertConfig,
   };
 };

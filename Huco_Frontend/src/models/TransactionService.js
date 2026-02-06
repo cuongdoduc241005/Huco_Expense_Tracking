@@ -1,36 +1,49 @@
 import { API_URL } from "../config/Config";
 
 export const TransactionService = {
-  // Lấy danh sách
-  getAll: async (userId) => {
-    try {
-      const response = await fetch(`${API_URL}/transactions?userId=${userId}`, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-      });
-
-      if (!response.ok) throw new Error("Lỗi tải giao dịch");
-      return await response.json();
-    } catch (error) {
-      console.error(error);
-      return [];
-    }
+  create: async (data) => {
+    const res = await fetch(`${API_URL}/transactions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    return { status: res.status, data: await res.json() };
   },
 
-  // Tạo mới
-  create: async (transactionData) => {
-    try {
-      const response = await fetch(`${API_URL}/transactions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(transactionData),
-      });
+  getAll: async (userId) => {
+    const res = await fetch(`${API_URL}/transactions/${userId}`);
+    return res.ok ? await res.json() : [];
+  },
 
-      if (!response.ok) throw new Error("Lỗi lưu giao dịch");
-      return await response.json();
-    } catch (error) {
-      console.error(error);
-      throw error;
-    }
+  create: async (data) => {
+    const res = await fetch(`${API_URL}/transactions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    return { status: res.status, data: await res.json() };
+  },
+
+  // HÀM CẬP NHẬT GIAO DỊCH
+  update: async (id, data) => {
+    const res = await fetch(`${API_URL}/transactions/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    return { status: res.status, data: await res.json() };
+  },
+
+  // HÀM XÓA GIAO DỊCH
+  delete: async (id) => {
+    const res = await fetch(`${API_URL}/transactions/${id}`, {
+      method: "DELETE",
+    });
+    return { status: res.status };
+  },
+
+  getAll: async (userId) => {
+    const res = await fetch(`${API_URL}/transactions/${userId}`);
+    return res.ok ? await res.json() : [];
   },
 };

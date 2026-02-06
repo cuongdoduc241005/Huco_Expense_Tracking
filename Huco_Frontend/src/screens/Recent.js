@@ -1,7 +1,6 @@
 /**
  * FILE: Recent.js
  * VAI TRÒ: Màn hình chi tiết lịch sử giao dịch
- * ĐẶC ĐIỂM: Sử dụng SectionList để gom nhóm giao dịch theo ngày.
  */
 
 import React, { useState } from "react";
@@ -28,13 +27,12 @@ import {
 import MainHeader from "../components/MainHeader";
 import { useRecentViewModel } from "../viewmodels/useRecentViewModel";
 
-const FILTERS = ["Tất cả", "Chi tiêu", "Thu nhập", "Tháng này", "Tháng trước"];
+const FILTERS = ["Tất cả", "Chi tiêu", "Thu nhập", "Tháng này"];
 
 export default function Recent({ navigation, route }) {
-  // 1. Nhận user từ params (được truyền từ Home)
   const user = route.params?.user;
 
-  // 2. Gọi ViewModel để lấy logic và dữ liệu
+  // Lấy dữ liệu và hàm từ ViewModel
   const {
     isLoading,
     activeFilter,
@@ -42,20 +40,18 @@ export default function Recent({ navigation, route }) {
     stats,
     groupedTransactions,
     refreshData,
+    deleteTransaction,
   } = useRecentViewModel(user);
 
-  // --- UI STATE (Chỉ quản lý hiển thị cục bộ) ---
   const [showBalance, setShowBalance] = useState(true);
   const [selectedItem, setSelectedItem] = useState(null);
   const [menuVisible, setMenuVisible] = useState(false);
 
-  // --- HELPER FUNCTION ---
   const formatCurrency = (amount) =>
     Number(amount)
       .toString()
       .replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 
-  // --- RENDER ITEM ---
   const renderItem = ({ item }) => (
     <TouchableOpacity
       style={styles.transactionItem}
@@ -76,8 +72,7 @@ export default function Recent({ navigation, route }) {
               { color: item.type === "INCOME" ? "#00C853" : "#F44336" },
             ]}
           >
-            {item.type === "INCOME" ? "+" : "-"}
-            {formatCurrency(item.amount)} ₫
+            {item.type === "INCOME" ? "+" : "-"} {formatCurrency(item.amount)} ₫
           </Text>
         </View>
         <View style={styles.bottomRow}>
@@ -95,9 +90,7 @@ export default function Recent({ navigation, route }) {
       <StatusBar barStyle="dark-content" backgroundColor="#F9F9F9" />
       <MainHeader user={user} />
 
-      {/* --- PHẦN CỐ ĐỊNH (FIXED HEADER) --- */}
       <View style={styles.fixedHeader}>
-        {/* CARD TỔNG QUAN (BALANCE) */}
         <View style={styles.balanceCard}>
           <View style={styles.balanceHeader}>
             <Text style={styles.balanceLabel}>Tổng số dư</Text>
@@ -115,7 +108,6 @@ export default function Recent({ navigation, route }) {
               : "******"}
           </Text>
           <View style={styles.balanceRow}>
-            {/* Tổng Thu */}
             <View style={styles.balanceItem}>
               <View style={styles.arrowIconDown}>
                 <Ionicons name="arrow-down" size={16} color="#FFF" />
@@ -127,8 +119,6 @@ export default function Recent({ navigation, route }) {
                 </Text>
               </View>
             </View>
-
-            {/* Tổng Chi */}
             <View style={styles.balanceItem}>
               <View style={styles.arrowIconUp}>
                 <Ionicons name="arrow-up" size={16} color="#FFF" />
@@ -145,7 +135,6 @@ export default function Recent({ navigation, route }) {
           </View>
         </View>
 
-        {/* THANH BỘ LỌC (FILTERS) */}
         <View style={styles.filterContainer}>
           <ScrollView
             horizontal
@@ -175,7 +164,6 @@ export default function Recent({ navigation, route }) {
         </View>
       </View>
 
-      {/* --- DANH SÁCH GIAO DỊCH (SECTION LIST) --- */}
       <View style={{ flex: 1 }}>
         {isLoading ? (
           <ActivityIndicator
@@ -193,25 +181,18 @@ export default function Recent({ navigation, route }) {
                 <Text style={styles.sectionHeaderText}>{title}</Text>
               </View>
             )}
-            contentContainerStyle={{ paddingBottom: 20 }}
-            showsVerticalScrollIndicator={true}
-            stickySectionHeadersEnabled={true}
             onRefresh={refreshData}
             refreshing={isLoading}
             ListEmptyComponent={
               <View style={{ alignItems: "center", marginTop: 50 }}>
-                <Text
-                  style={{ color: "#999", fontFamily: "Montserrat-Regular" }}
-                >
-                  Không có dữ liệu
-                </Text>
+                <Text style={{ color: "#999" }}>Không có dữ liệu</Text>
               </View>
             }
           />
         )}
       </View>
 
-      {/* --- MODAL TÙY CHỌN (MENU) --- */}
+      {/* MODAL TÙY CHỌN */}
       <Modal
         animationType="fade"
         transparent={true}
@@ -226,37 +207,33 @@ export default function Recent({ navigation, route }) {
           <View style={styles.menuBox}>
             <Text style={styles.menuTitle}>Tùy chọn</Text>
 
-            {/* Nút Sửa */}
+            {/* NÚT SỬA: Điều hướng sang Home */}
             <TouchableOpacity
               style={styles.menuOption}
               onPress={() => {
                 setMenuVisible(false);
-                Alert.alert("Thông báo", "Tính năng 'Sửa' đang phát triển");
+                navigation.navigate("Trang chủ", { editItem: selectedItem });
               }}
             >
               <MaterialCommunityIcons name="pencil" size={24} color="#1F41BB" />
-              <Text style={styles.menuOptionText}>Sửa</Text>
+              <Text style={styles.menuOptionText}>Sửa giao dịch</Text>
             </TouchableOpacity>
 
             <View style={styles.menuDivider} />
 
-            {/* Nút Xóa */}
+            {/* NÚT XÓA: Gọi API Xóa */}
             <TouchableOpacity
               style={styles.menuOption}
               onPress={() => {
                 setMenuVisible(false);
-                Alert.alert(
-                  "Xác nhận xóa",
-                  "Bạn có chắc muốn xóa giao dịch này?",
-                  [
-                    { text: "Hủy", style: "cancel" },
-                    {
-                      text: "Xóa",
-                      style: "destructive",
-                      onPress: () => console.log("Delete", selectedItem?.id),
-                    },
-                  ],
-                );
+                Alert.alert("Xác nhận", "Xóa giao dịch này?", [
+                  { text: "Hủy", style: "cancel" },
+                  {
+                    text: "Xóa",
+                    style: "destructive",
+                    onPress: () => deleteTransaction(selectedItem?.id),
+                  },
+                ]);
               }}
             >
               <MaterialCommunityIcons
@@ -275,14 +252,10 @@ export default function Recent({ navigation, route }) {
   );
 }
 
-// Giữ nguyên Styles cũ của bạn
+// ... Giữ nguyên phần styles của bạn ...
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F9F9F9" },
-  fixedHeader: {
-    backgroundColor: "#F9F9F9",
-    paddingTop: 10,
-    zIndex: 10,
-  },
+  fixedHeader: { backgroundColor: "#F9F9F9", paddingTop: 10, zIndex: 10 },
   balanceCard: {
     backgroundColor: "#1F41BB",
     marginHorizontal: 20,
@@ -296,18 +269,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 5,
   },
-  balanceLabel: {
-    color: "rgba(255,255,255,0.8)",
-    fontFamily: "Montserrat-Medium",
-    fontSize: 14,
-  },
+  balanceLabel: { color: "rgba(255,255,255,0.8)", fontSize: 14 },
   totalBalanceText: {
     color: "#FFF",
     fontFamily: "Montserrat-Bold",
     fontSize: 32,
     marginBottom: 15,
   },
-  subValue: { color: "#FFF", fontSize: 15, fontFamily: "Montserrat-Bold" },
+  subValue: { color: "#FFF", fontSize: 15, fontWeight: "bold" },
   balanceRow: { flexDirection: "row", justifyContent: "space-between" },
   balanceItem: { flexDirection: "row", alignItems: "center", gap: 10 },
   arrowIconDown: {
@@ -326,11 +295,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  subLabel: {
-    color: "rgba(255,255,255,0.7)",
-    fontSize: 12,
-    fontFamily: "Montserrat-Regular",
-  },
+  subLabel: { color: "rgba(255,255,255,0.7)", fontSize: 12 },
   filterContainer: { marginBottom: 15 },
   filterChip: {
     paddingVertical: 8,
@@ -342,18 +307,14 @@ const styles = StyleSheet.create({
     borderColor: "#F0F0F0",
   },
   filterChipActive: { backgroundColor: "#1F41BB", borderColor: "#1F41BB" },
-  filterText: { color: "#666", fontFamily: "Montserrat-Medium", fontSize: 13 },
-  filterTextActive: { color: "#FFF", fontFamily: "Montserrat-SemiBold" },
+  filterText: { color: "#666", fontSize: 13 },
+  filterTextActive: { color: "#FFF", fontWeight: "bold" },
   sectionHeader: {
     paddingHorizontal: 20,
     paddingVertical: 10,
     backgroundColor: "#F9F9F9",
   },
-  sectionHeaderText: {
-    fontFamily: "Montserrat-SemiBold",
-    fontSize: 13,
-    color: "#888",
-  },
+  sectionHeaderText: { fontSize: 13, color: "#888", fontWeight: "bold" },
   transactionItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -376,20 +337,11 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 4,
   },
-  categoryName: {
-    fontFamily: "Montserrat-SemiBold",
-    fontSize: 15,
-    color: "#333",
-  },
-  amountText: { fontFamily: "Montserrat-Bold", fontSize: 15 },
+  categoryName: { fontWeight: "bold", fontSize: 15, color: "#333" },
+  amountText: { fontWeight: "bold", fontSize: 15 },
   bottomRow: { flexDirection: "row", justifyContent: "space-between" },
-  noteText: {
-    fontFamily: "Montserrat-Medium",
-    fontSize: 13,
-    color: "#888",
-    flex: 1,
-  },
-  timeText: { fontFamily: "Montserrat-Regular", fontSize: 12, color: "#AAA" },
+  noteText: { fontSize: 13, color: "#888", flex: 1 },
+  timeText: { fontSize: 12, color: "#AAA" },
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
@@ -403,23 +355,13 @@ const styles = StyleSheet.create({
     padding: 20,
     alignItems: "center",
   },
-  menuTitle: {
-    fontFamily: "Montserrat-Bold",
-    fontSize: 18,
-    marginBottom: 15,
-    color: "#333",
-  },
+  menuTitle: { fontSize: 18, fontWeight: "bold", marginBottom: 15 },
   menuOption: {
     flexDirection: "row",
     alignItems: "center",
     width: "100%",
     paddingVertical: 15,
   },
-  menuOptionText: {
-    fontFamily: "Montserrat-Medium",
-    fontSize: 16,
-    marginLeft: 15,
-    color: "#333",
-  },
+  menuOptionText: { fontSize: 16, marginLeft: 15 },
   menuDivider: { width: "100%", height: 1, backgroundColor: "#EEE" },
 });
